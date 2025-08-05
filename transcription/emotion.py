@@ -4,6 +4,7 @@ from transformers import AutoModelForAudioClassification, AutoFeatureExtractor
 import torch
 import numpy as np
 import librosa
+from ..types.convert import TranscriptResult
 
 model_id = "firdhokk/speech-emotion-recognition-with-openai-whisper-large-v3"
 model = AutoModelForAudioClassification.from_pretrained(
@@ -24,20 +25,27 @@ id2label = model.config.id2label
 def emotional_transcript(
     whisper_transcript_output_file, emotion_transcript_output_file
 ):
-    json_output = json.loads(open(whisper_transcript_output_file).read())
-    for segment in json_output["all_segments"]:
-        audio_path = segment["filename"]
-        for i in segment["transcript"]["segments"]:
-            start_time = i["start"]
-            end_time = i["end"]
+    json_input = TranscriptResult.model_validate(
+        json.loads(open(whisper_transcript_output_file).read())
+    )
+    n = 0
+    for segment in json_input.all_segments:
+        audio_path = segment.filename
+        for transcript_segment in segment.transcript.segments:
+            start_time = transcript_segment.start
+            end_time = transcript_segment.end
             duration = end_time - start_time
             predicted_emotion = predict_emotion(
                 audio_path, model, feature_extractor, id2label, start_time, duration
             )
-            print(f"Predicted Emotion: {predicted_emotion}")
-            i["emotion"] = predicted_emotion
+            print(
+                f"{transcript_segment.id}/{len(segment.transcript.segments)} {n}/{len(json_input.all_segments)} ({audio_path}): Predicted Emotion: {predicted_emotion}"
+            )
+            transcript_segment.emotion = predicted_emotion
+        n += 1
     with open(emotion_transcript_output_file, "w") as f:
-        json.dump(json_output, f, indent=2)
+        # json.dump(json_input, f, indent=2)
+        f.write(json_input.model_dump_json(indent=2))
     return emotion_transcript_output_file
 
 
@@ -54,14 +62,14 @@ def preprocess_audio(
         if end_sample > len(audio_array):
             end_sample = len(audio_array)
         audio_array = audio_array[start_sample:end_sample]
-        print(
-            f"Extracted segment: {start_time}s to {start_time + duration}s, samples {start_sample} to {end_sample}"
-        )
+        # print(
+        #     f"Extracted segment: {start_time}s to {start_time + duration}s, samples {start_sample} to {end_sample}"
+        # )
     else:
         audio_array = audio_array[start_sample:]
-        print(
-            f"Extracted segment from {start_time}s onwards, starting at sample {start_sample}"
-        )
+        # print(
+        #     f"Extracted segment from {start_time}s onwards, starting at sample {start_sample}"
+        # )
 
     max_length = int(feature_extractor.sampling_rate * max_duration)
     if len(audio_array) > max_length:
@@ -88,18 +96,18 @@ def predict_emotion(
     duration=None,
     max_duration=30.0,
 ):
-    print(f"Processing audio segment: start_time={start_time}, duration={duration}")
+    # print(f"Processing audio segment: start_time={start_time}, duration={duration}")
     inputs = preprocess_audio(
         audio_path, feature_extractor, start_time, duration, max_duration
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    if device.type == "cuda":
-        print(f"CUDA Device Count: {torch.cuda.device_count()}")
-        print(
-            f"CUDA Device Name: {torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else 'N/A'}"
-        )
+    # print(f"Using device: {device}")
+    # if device.type == "cuda":
+    #     print(f"CUDA Device Count: {torch.cuda.device_count()}")
+    #     print(
+    #         f"CUDA Device Name: {torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else 'N/A'}"
+    #     )
     model = model.to(device)
     inputs = {key: value.to(device) for key, value in inputs.items()}
 
@@ -109,6 +117,6 @@ def predict_emotion(
     logits = outputs.logits
     predicted_id = torch.argmax(logits, dim=-1).item()
     predicted_label = id2label[predicted_id]
-    print(f"Predicted Emotion for segment starting at {start_time}s: {predicted_label}")
+    # print(f"Predicted Emotion for segment starting at {start_time}s: {predicted_label}")
 
     return predicted_label

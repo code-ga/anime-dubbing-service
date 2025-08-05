@@ -3,6 +3,7 @@ from pyannote.audio import Pipeline
 import torch
 from pydub import AudioSegment
 import json
+from ..types.convert import VoiceSeparator, VoiceSeparatorSegment
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -24,7 +25,7 @@ def voice_separator(vocal_path: str, output_path: str):
     diarization = pipeline(vocal_path)
     speakers_time = {}
     audio_files: list[str] = []
-    all_segments = []
+    all_segments: list[VoiceSeparatorSegment] = []
     # print the result
     for turn, _, speaker in diarization.itertracks(yield_label=True):
         print(turn, speaker)
@@ -47,24 +48,29 @@ def voice_separator(vocal_path: str, output_path: str):
             os.path.join(output_path, speaker, f"{turn.start:.1f}-{turn.end:.1f}.wav")
         )
         all_segments.append(
-            {
-                "start": turn.start,
-                "end": turn.end,
-                "speaker": speaker,
-                "filename": os.path.join(
-                    output_path, speaker, f"{turn.start:.1f}-{turn.end:.1f}.wav"
-                ),
-                "id": len(all_segments),
-            }
+            VoiceSeparatorSegment(
+                **{
+                    "start": turn.start,
+                    "end": turn.end,
+                    "speaker": speaker,
+                    "filename": os.path.join(
+                        output_path, speaker, f"{turn.start:.1f}-{turn.end:.1f}.wav"
+                    ),
+                    "id": len(all_segments),
+                }
+            )
         )
-    result = {
-        "audio_files": audio_files,
-        "speakers_time": speakers_time,
-        "all_segments": all_segments,
-    }
+    # result = {
+    #     "audio_files": audio_files,
+    #     "speakers_time": speakers_time,
+    #     "all_segments": all_segments,
+    # }
+    result = VoiceSeparator(
+        audio_files=audio_files, speakers_time=speakers_time, all_segments=all_segments
+    )
     output_file = os.path.join(output_path, "output.json")
     file = open(output_file, mode="w")
-    file.write(str(json.dumps(result)))
+    file.write(str(result.model_dump_json(indent=4)))
     return output_file
     # start=0.2s stop=1.5s speaker_0
     # start=1.8s stop=3.9s speaker_1

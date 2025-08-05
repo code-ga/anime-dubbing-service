@@ -6,3 +6,5 @@ pydub
 openai-whisper
 transformers
 librosa
+pydantic
+openai
