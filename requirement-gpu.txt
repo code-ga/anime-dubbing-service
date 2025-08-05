@@ -1,0 +1,9 @@
+ffmpeg-python
+audio_separator[gpu]
+torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pyannote.audio
+python-dotenv
+pydub 
+python-whisper
+transformers
+librosa

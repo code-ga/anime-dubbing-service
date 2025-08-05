@@ -1,0 +1,8 @@
+ffmpeg-python
+audio_separator
+pyannote.audio
+python-dotenv
+pydub 
+python-whisper
+transformers
+librosa
