@@ -4,6 +4,6 @@ torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pyannote.audio
 python-dotenv
 pydub 
-python-whisper
+openai-whisper
 transformers
 librosa

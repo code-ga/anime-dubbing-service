@@ -3,6 +3,6 @@ audio_separator
 pyannote.audio
 python-dotenv
 pydub 
-python-whisper
+openai-whisper
 transformers
 librosa
