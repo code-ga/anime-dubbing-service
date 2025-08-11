@@ -49,8 +49,3 @@ class TranscriptExtendedSegment(VoiceSeparatorSegment):
             transcript=transcript,
         )
 
-
-class TranscriptResult(BaseModel):
-    audio_files: list[str]
-    speakers_time: dict[str, int]
-    all_segments: list[TranscriptExtendedSegment]

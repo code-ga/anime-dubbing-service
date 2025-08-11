@@ -8,22 +8,24 @@ load_dotenv("./.env")
 # from convert.separate_audio import separate_audio
 # from convert.voice_separator import voice_separator
 # from transcription.whisper import transcript
-from transcription.emotion import emotional_transcript
+# from transcription.emotion import emotional_transcript
+import numpy as np
 import torch
+import soundfile as sf
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 
-tmp_path = os.path.abspath("./tmp")
+# tmp_path = os.path.abspath("./tmp")
 
-if not os.path.exists(tmp_path):
-    os.makedirs(tmp_path)
+# if not os.path.exists(tmp_path):
+#     os.makedirs(tmp_path)
 
-models_path = "./models"
+# models_path = "./models"
 
-if not os.path.exists(models_path):
-    os.makedirs(models_path)
+# if not os.path.exists(models_path):
+#     os.makedirs(models_path)
 
 
 # if __name__ == "__main__":
@@ -69,5 +71,6 @@ if not os.path.exists(models_path):
 #         os.path.join(tmp_path, "transcript.json"),
 #     )
 
-if __name__ == "__main__":
-    emotional_transcript(os.path.join(tmp_path, "transcript.json"), os.path.join(tmp_path, "emotional_transcript.json"))
+# if __name__ == "__main__":
+#     emotional_transcript(os.path.join(tmp_path, "transcript.json"), os.path.join(tmp_path, "emotional_transcript.json"))
+
