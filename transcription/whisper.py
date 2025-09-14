@@ -1,78 +1,309 @@
+from typing import List, Optional
+import numpy as np
+import pandas as pd
+import torchaudio
 import whisper
 import json
+from pyannote.audio import Pipeline
+from pyannote.audio.pipelines.utils.hook import ProgressHook
 import torch
-from ..types.convert import (
-    VoiceSeparator,
-    TranscriptResult,
-    TranscriptExtendedSegment,
-    VoiceTranscript,
-    VoiceTranscriptSegment,
-)
+import os
+import gc
+from typing import TypedDict
 
+
+HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = whisper.load_model("turbo", download_root="./models/whisper", device=DEVICE)
 
 
-def transcript(voice_separator_json_output, whisper_json_output):
-    raw_json_input = json.loads(open(voice_separator_json_output).read())
-    json_input = VoiceSeparator.model_validate(raw_json_input)
-    json_output = TranscriptResult(
-        audio_files=json_input.audio_files,
-        speakers_time=json_input.speakers_time,
-        all_segments=[],
+class WhisperSegment(TypedDict):
+
+    seek: int
+    start: float
+    end: float
+    text: str
+    tokens: torch.Tensor
+    temperature: float
+    avg_logprob: float
+    compression_ratio: float
+    no_speech_prob: float
+    audioFilePath: str
+
+    # def __init__(self, **segment_data):
+    #     # check if all keys are present
+    #     """
+    #     Initialize a WhisperSegment instance.
+
+    #     Parameters
+    #     ----------
+    #     **segment_data : dict
+    #         A dictionary containing the following keys:
+
+    #         - seek: int
+    #         - start: float
+    #         - end: float
+    #         - text: str
+    #         - tokens: torch.Tensor
+    #         - temperature: float
+    #         - avg_logprob: float
+    #         - compression_ratio: float
+    #         - no_speech_prob: float
+    #         - audioFilePath: str
+
+    #     Raises
+    #     ------
+    #     ValueError
+    #         If any of the required keys are missing from the `segment_data` dictionary.
+    #     """
+    #     for key in [
+    #         "seek",
+    #         "start",
+    #         "end",
+    #         "text",
+    #         "tokens",
+    #         "temperature",
+    #         "avg_logprob",
+    #         "compression_ratio",
+    #         "no_speech_prob",
+    #         "audioFilePath",
+    #     ]:
+    #         if key not in segment_data:
+    #             raise ValueError(f"Missing key {key} in segment data")
+    #     self.seek = segment_data["seek"]
+    #     self.start = segment_data["start"]
+    #     self.end = segment_data["end"]
+    #     self.text = segment_data["text"]
+    #     self.tokens = segment_data["tokens"]
+    #     self.temperature = segment_data["temperature"]
+    #     self.avg_logprob = segment_data["avg_logprob"]
+    #     self.compression_ratio = segment_data["compression_ratio"]
+    #     self.no_speech_prob = segment_data["no_speech_prob"]
+    #     self.audioFilePath = segment_data["audioFilePath"]
+
+
+class WhisperResult(TypedDict):
+    segments: List[WhisperSegment]
+    text: str
+    language: str
+
+
+def transcript(audioFilePath, tmp_path):
+    """
+    Transcribe an audio file using Whisper and assign speakers to words using Pyannote.
+
+    Parameters
+    ----------
+    audioFilePath : str
+        Path to the audio file to be transcribed.
+
+    Returns
+    -------
+    list[WhisperSegment]
+        A list of WhisperSegment objects with speaker assignments.
+
+    """
+    pass
+    audio_transcript = []
+
+    whisper_model = whisper.load_model("turbo", device=DEVICE)
+    result = whisper_model.transcribe(audioFilePath)
+    audio_transcript: list[WhisperSegment] = []
+    for c in result["segments"]:
+        if isinstance(c, str):
+            raise ValueError
+        audio, sr = torchaudio.load(audioFilePath)
+        saving_dir = os.path.join(tmp_path, "whisper_audio")
+        if not os.path.exists(saving_dir):
+            os.makedirs(saving_dir)
+        saving_path = os.path.join(saving_dir, f"{c['start']}_{c['end']}.wav")
+        torchaudio.save(
+            saving_path,
+            audio[:, int(c["start"] * sr) : int(c["end"] * sr)],
+            sr,
+            encoding="PCM_S",
+            bits_per_sample=16,
+        )
+        # audio_transcript.append(WhisperSegment(**c, audioFilePath=saving_path))
+        whisper_segment: WhisperSegment = {
+            "audioFilePath": saving_path,
+            "seek": c["seek"],
+            "start": c["start"],
+            "end": c["end"],
+            "text": c["text"],
+            "tokens": c["tokens"],
+            "temperature": c["temperature"],
+            "avg_logprob": c["avg_logprob"],
+            "compression_ratio": c["compression_ratio"],
+            "no_speech_prob": c["no_speech_prob"],
+        }
+        audio_transcript.append(whisper_segment)
+    whisper_transcript: WhisperResult = {
+        "segments": audio_transcript,
+        "language": str(result["language"]),
+        "text": str(result["text"]),
+    }
+    del whisper_model
+    del result
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    pipeline = Pipeline.from_pretrained(
+        "pyannote/speaker-diarization-3.1", use_auth_token=HF_TOKEN
+    ).to(DEVICE)
+    with ProgressHook() as hook:
+        diarization, embeddings = pipeline(
+            "./tmp/vocals_output.wav", return_embeddings=True, hook=hook
+        )
+
+    diarize_df = pd.DataFrame(
+        diarization.itertracks(yield_label=True),
+        columns=["segment", "label", "speaker"],
     )
-    for segment in json_input.all_segments:
-        # load audio and pad/trim it to fit 30 seconds
-        result = model.transcribe(
-            segment.filename,
-            language="japanese",
-            # verbose=True,
-        )
-        print(
-            f"{segment.id}/{len(json_input.all_segments)} {segment.filename}: {result['language']} {result['text']}"
-        )
-        result_segment: list[VoiceTranscript] = []
-        for i in result["segments"]:
-            # result_segment.append(
-            #     {
-            #         "start": i["start"],  # type: ignore
-            #         "end": i["end"],  # type: ignore
-            #         "text": i["text"],  # type: ignore
-            #         "id": i["id"],  # type: ignore
-            #         "seek": i["seek"],  # type: ignore
-            #     }
-            # )
-            result_segment.append(
-                VoiceTranscript(
-                    start=i["start"],  # type: ignore
-                    end=i["end"],  # type: ignore
-                    text=i["text"],  # type: ignore
-                    id=i["id"],  # type: ignore
-                    seek=i["seek"],  # type: ignore
-                )
-            )
+    diarize_df["start"] = diarize_df["segment"].apply(lambda x: x.start)
+    diarize_df["end"] = diarize_df["segment"].apply(lambda x: x.end)
+    speaker_embeddings = {
+        speaker: embeddings[s].tolist()
+        for s, speaker in enumerate(diarization.labels())
+    }
 
-        # json_input["all_segments"][segment.id]["transcript"] = {
-        #     "text": result["text"],
-        #     "language": result["language"],
-        #     "segments": result_segment,
-        # }
-        json_output.all_segments.append(
-            TranscriptExtendedSegment.from_voice_separator_segment(
-                segment,
-                transcript=VoiceTranscriptSegment(
-                    text=result["text"], # type: ignore
-                    language=result["language"], # type: ignore
-                    segments=result_segment,
-                ),
-            )
-        )
-        # json_output.all_segments[-1].transcript = {
-        #     "text": result["text"],
-        #     "language": result["language"],
-        #     "segments": [vt.model_dump() for vt in result_segment],
-        # }
+    result_with_speakers = assign_word_speakers(
+        diarize_df, whisper_transcript, speaker_embeddings
+    )
 
-    with open(whisper_json_output, "w") as f:
-        json.dump(json_output.model_dump(), f, indent=2)
-    return whisper_json_output
+    return result_with_speakers
+
+
+class DiarizationResult(WhisperSegment):
+    speaker: str
+
+    # def __init__(self, **segment_data):
+    #     # check if all keys are present
+    #     """
+    #     Initialize a DiarizationResult instance.
+
+    #     Parameters
+    #     ----------
+    #     **segment_data : dict
+    #         A dictionary containing the following keys:
+
+    #         - seek: int
+    #         - start: float
+    #         - end: float
+    #         - text: str
+    #         - tokens: torch.Tensor
+    #         - temperature: float
+    #         - avg_logprob: float
+    #         - compression_ratio: float
+    #         - no_speech_prob: float
+    #         - speaker: str
+
+    #     Raises
+    #     ------
+    #     ValueError
+    #         If any of the required keys are missing from the `segment_data` dictionary.
+    #     """
+    #     for key in ["seek", "start", "end", "text", "tokens"]:
+    #         if key not in segment_data:
+    #             raise ValueError(f"Missing key {key} in segment data")
+    #     self.seek = segment_data["seek"]
+    #     self.start = segment_data["start"]
+    #     self.end = segment_data["end"]
+    #     self.text = segment_data["text"]
+    #     self.tokens = segment_data["tokens"]
+    #     self.temperature = segment_data["temperature"]
+    #     self.avg_logprob = segment_data["avg_logprob"]
+    #     self.compression_ratio = segment_data["compression_ratio"]
+    #     self.no_speech_prob = segment_data["no_speech_prob"]
+    #     self.speaker = segment_data["speaker"]
+
+
+class AssignWordSpeakersResult(TypedDict):
+    speaker_embeddings: dict[str, list[float]]
+    segments: List[DiarizationResult]
+    language: str
+
+
+def assign_word_speakers(
+    diarize_df: pd.DataFrame,
+    transcript_result: WhisperResult,
+    speaker_embeddings: Optional[dict[str, list[float]]] = None,
+    fill_nearest: bool = False,
+) -> AssignWordSpeakersResult:
+    """
+    Assign speakers to words and segments in the transcript.
+
+    Args:
+        diarize_df: Diarization dataframe from DiarizationPipeline
+        transcript_result: Transcription result to augment with speaker labels
+        speaker_embeddings: Optional dictionary mapping speaker IDs to embedding vectors
+        fill_nearest: If True, assign speakers even when there's no direct time overlap
+
+    Returns:
+        Updated transcript_result with speaker assignments and optionally embeddings
+    """
+    result: List[DiarizationResult] = []
+    transcript_segments = transcript_result["segments"]
+    for seg in transcript_segments:
+        # assign speaker to segment (if any)
+        diarize_df["intersection"] = np.minimum(
+            diarize_df["end"], seg["end"]
+        ) - np.maximum(diarize_df["start"], seg["start"])
+        diarize_df["union"] = np.maximum(diarize_df["end"], seg["end"]) - np.minimum(
+            diarize_df["start"], seg["start"]
+        )
+        # remove no hit, otherwise we look for closest (even negative intersection...)
+        if not fill_nearest:
+            dia_tmp = diarize_df[diarize_df["intersection"] > 0]
+        else:
+            dia_tmp = diarize_df
+        if len(dia_tmp) > 0:
+            # sum over speakers
+            speaker = (
+                dia_tmp.groupby("speaker")["intersection"]
+                .sum()
+                .sort_values(ascending=False)
+                .index[0]
+            )
+            # seg["speaker"] = speaker
+            print(type(speaker))
+            result.append({**seg, "speaker": str(speaker)})
+
+        # assign speaker to words
+        # if "words" in seg:
+        #     for word in seg["words"]:
+        #         if "start" in word:
+        #             diarize_df["intersection"] = np.minimum(
+        #                 diarize_df["end"], word["end"]
+        #             ) - np.maximum(diarize_df["start"], word["start"])
+        #             diarize_df["union"] = np.maximum(
+        #                 diarize_df["end"], word["end"]
+        #             ) - np.minimum(diarize_df["start"], word["start"])
+        #             # remove no hit
+        #             if not fill_nearest:
+        #                 dia_tmp = diarize_df[diarize_df["intersection"] > 0]
+        #             else:
+        #                 dia_tmp = diarize_df
+        #             if len(dia_tmp) > 0:
+        #                 # sum over speakers
+        #                 speaker = (
+        #                     dia_tmp.groupby("speaker")["intersection"]
+        #                     .sum()
+        #                     .sort_values(ascending=False)
+        #                     .index[0]
+        #                 )
+        #                 word["speaker"] = speaker
+
+    # Add speaker embeddings to the result if provided
+    if speaker_embeddings is not None:
+        return {
+            "speaker_embeddings": speaker_embeddings,
+            "segments": result,
+            "language": transcript_result["language"],
+        }
+
+    return {
+        "speaker_embeddings": {},
+        "segments": result,
+        "language": transcript_result["language"],
+    }

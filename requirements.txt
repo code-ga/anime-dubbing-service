@@ -1,0 +1,6 @@
+ffmpeg-python
+audio_separator
+python-dotenv 
+transformers
+openai
+torchaudio

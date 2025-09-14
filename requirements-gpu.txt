@@ -1,0 +1,5 @@
+ffmpeg-python
+audio_separator[gpu]
+python-dotenv 
+transformers
+openai
