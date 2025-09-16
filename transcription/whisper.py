@@ -9,7 +9,7 @@ from pyannote.audio.pipelines.utils.hook import ProgressHook
 import torch
 import os
 import gc
-from typing import TypedDict
+from typing import TypedDict, Optional
 
 
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
@@ -17,7 +17,6 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class WhisperSegment(TypedDict):
-
     seek: int
     start: float
     end: float
@@ -171,57 +170,45 @@ def transcript(audioFilePath, tmp_path):
         diarize_df, whisper_transcript, speaker_embeddings
     )
 
+    # Initialize is_singing flag
+    for seg in result_with_speakers["segments"]:
+        seg["is_singing"] = False
+
+    # Save transcript to JSON
+    transcript_dir = os.path.join(tmp_path, "transcript")
+    os.makedirs(transcript_dir, exist_ok=True)
+    transcript_path = os.path.join(transcript_dir, "transcript.json")
+    to_save = {
+        "segments": result_with_speakers["segments"],
+        "language": result_with_speakers["language"],
+        "text": result_with_speakers["text"],
+    }
+    with open(transcript_path, "w") as f:
+        json.dump(to_save, f, indent=2)
+
     return result_with_speakers
 
 
-class DiarizationResult(WhisperSegment):
-    speaker: str
-
-    # def __init__(self, **segment_data):
-    #     # check if all keys are present
-    #     """
-    #     Initialize a DiarizationResult instance.
-
-    #     Parameters
-    #     ----------
-    #     **segment_data : dict
-    #         A dictionary containing the following keys:
-
-    #         - seek: int
-    #         - start: float
-    #         - end: float
-    #         - text: str
-    #         - tokens: torch.Tensor
-    #         - temperature: float
-    #         - avg_logprob: float
-    #         - compression_ratio: float
-    #         - no_speech_prob: float
-    #         - speaker: str
-
-    #     Raises
-    #     ------
-    #     ValueError
-    #         If any of the required keys are missing from the `segment_data` dictionary.
-    #     """
-    #     for key in ["seek", "start", "end", "text", "tokens"]:
-    #         if key not in segment_data:
-    #             raise ValueError(f"Missing key {key} in segment data")
-    #     self.seek = segment_data["seek"]
-    #     self.start = segment_data["start"]
-    #     self.end = segment_data["end"]
-    #     self.text = segment_data["text"]
-    #     self.tokens = segment_data["tokens"]
-    #     self.temperature = segment_data["temperature"]
-    #     self.avg_logprob = segment_data["avg_logprob"]
-    #     self.compression_ratio = segment_data["compression_ratio"]
-    #     self.no_speech_prob = segment_data["no_speech_prob"]
-    #     self.speaker = segment_data["speaker"]
+class DiarizationResult(TypedDict, total=False):
+    seek: int
+    start: float
+    end: float
+    text: str
+    tokens: torch.Tensor
+    temperature: float
+    avg_logprob: float
+    compression_ratio: float
+    no_speech_prob: float
+    audioFilePath: str
+    speaker: Optional[str]
+    is_singing: bool
 
 
 class AssignWordSpeakersResult(TypedDict):
     speaker_embeddings: dict[str, list[float]]
     segments: List[DiarizationResult]
     language: str
+    text: str
 
 
 def assign_word_speakers(
@@ -245,6 +232,7 @@ def assign_word_speakers(
     result: List[DiarizationResult] = []
     transcript_segments = transcript_result["segments"]
     for seg in transcript_segments:
+        speaker = None
         # assign speaker to segment (if any)
         diarize_df["intersection"] = np.minimum(
             diarize_df["end"], seg["end"]
@@ -265,9 +253,7 @@ def assign_word_speakers(
                 .sort_values(ascending=False)
                 .index[0]
             )
-            # seg["speaker"] = speaker
-            print(type(speaker))
-            result.append({**seg, "speaker": str(speaker)})
+        result.append({**seg, "speaker": (str(speaker) or "unknown")})
 
         # assign speaker to words
         # if "words" in seg:
@@ -300,10 +286,12 @@ def assign_word_speakers(
             "speaker_embeddings": speaker_embeddings,
             "segments": result,
             "language": transcript_result["language"],
+            "text": transcript_result["text"],
         }
 
     return {
         "speaker_embeddings": {},
         "segments": result,
         "language": transcript_result["language"],
+        "text": transcript_result["text"],
     }

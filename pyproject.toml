@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "audio-separator>=0.36.1",
     "ctranslate2==4.4.0",
+    "f5-tts>=1.1.9",
     "ffmpeg-python>=0.2.0",
     "huggingface-hub[hf-xet]>=0.34.4",
     "openai>=1.102.0",
