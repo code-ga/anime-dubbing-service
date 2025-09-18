@@ -26,13 +26,13 @@ class TranslateResult(TypedDict, total=False):
     target_language: str
 
 def translate_with_openai(
-    transcript: AssignWordSpeakersResult, tmp_path: str, target_language: str = "English", singing_model: Optional[str] = "gpt-3.5-turbo"
+    transcript: AssignWordSpeakersResult, tmp_path: str, target_language: str = "English", singing_model: Optional[str] = "openai/gpt-oss-120b"
 ) -> TranslateResult:
     # Classify singing segments
     for segment in transcript["segments"]:
         text = segment.get("text", "")
         try:
-            model_to_use = singing_model or "gpt-3.5-turbo"
+            model_to_use = singing_model or "openai/gpt-oss-120b"
             response = client.chat.completions.create(
                 model=model_to_use,
                 messages=[{"role": "user", "content": PROMPT.format(text=text)}],
