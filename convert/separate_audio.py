@@ -1,8 +1,15 @@
 import os
 from audio_separator.separator import Separator
+from datetime import datetime
+from utils.metadata import save_stage_result
+import shutil
 
 
-def separate(audio_path: str, output_dir: str) -> tuple[str, str]:
+def separate(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
+    full_wav_path = inputs_data["convert_mp4_to_wav"]["full_wav_path"]
+    audio_path = os.path.join(tmp_path, full_wav_path)
+    output_dir = tmp_path
+    
     # Initialize the Separator class (with optional configuration properties, below)
     separator = Separator(
         model_file_dir=os.path.join(os.path.abspath("./models"), "audio_separator"),
@@ -20,6 +27,26 @@ def separate(audio_path: str, output_dir: str) -> tuple[str, str]:
         },
     )
 
-    return os.path.join(output_dir, instrumental_files), os.path.join(
-        output_dir, vocals_files
-    )
+    vocals_path = os.path.join(output_dir, vocals_files)
+    instrumental_path = os.path.join(output_dir, instrumental_files)
+
+    # Copy to standard names
+    final_vocals = os.path.join(tmp_path, "vocals.wav")
+    final_instrumental = os.path.join(tmp_path, "accompaniment.wav")
+    shutil.copy(vocals_path, final_vocals)
+    shutil.copy(instrumental_path, final_instrumental)
+    
+    # Get total duration from previous stage
+    total_duration = inputs_data["convert_mp4_to_wav"]["duration"]
+    
+    stage_data = {
+        "stage": "separate_audio",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "errors": [],
+        "vocals_path": "vocals.wav",
+        "instrumental_path": "accompaniment.wav",
+        "separation_method": "audio_separator",
+        "metadata": {"total_duration": total_duration}
+    }
+    
+    return stage_data

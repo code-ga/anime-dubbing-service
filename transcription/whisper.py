@@ -86,34 +86,37 @@ class WhisperResult(TypedDict):
     language: str
 
 
-def transcript(audioFilePath, tmp_path):
+def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
     """
     Transcribe an audio file using Whisper and assign speakers to words using Pyannote.
 
     Parameters
     ----------
-    audioFilePath : str
-        Path to the audio file to be transcribed.
+    tmp_path : str
+    metadata_path : str
+    inputs_data : dict
+    language : str, optional
 
     Returns
     -------
-    list[WhisperSegment]
-        A list of WhisperSegment objects with speaker assignments.
+    dict
+        Stage data with segments, language, text, speaker_embeddings.
 
     """
-    pass
-    audio_transcript = []
+
+    audioFilePath = os.path.join(tmp_path, inputs_data["separate_audio"]["vocals_path"])
+    print(audioFilePath)
 
     whisper_model = whisper.load_model("turbo", device=DEVICE)
     result = whisper_model.transcribe(audioFilePath)
     audio_transcript: list[WhisperSegment] = []
+    audio, sr = torchaudio.load(audioFilePath)
+    saving_dir = os.path.join(tmp_path, "whisper_audio")
+    if not os.path.exists(saving_dir):
+        os.makedirs(saving_dir)
     for c in result["segments"]:
         if isinstance(c, str):
             raise ValueError
-        audio, sr = torchaudio.load(audioFilePath)
-        saving_dir = os.path.join(tmp_path, "whisper_audio")
-        if not os.path.exists(saving_dir):
-            os.makedirs(saving_dir)
         saving_path = os.path.join(saving_dir, f"{c['start']}_{c['end']}.wav")
         torchaudio.save(
             saving_path,
@@ -152,7 +155,7 @@ def transcript(audioFilePath, tmp_path):
     ).to(DEVICE)
     with ProgressHook() as hook:
         diarization, embeddings = pipeline(
-            "./tmp/vocals_output.wav", return_embeddings=True, hook=hook
+            audioFilePath, return_embeddings=True, hook=hook
         )
 
     diarize_df = pd.DataFrame(
@@ -173,18 +176,9 @@ def transcript(audioFilePath, tmp_path):
     # Initialize is_singing flag
     for seg in result_with_speakers["segments"]:
         seg["is_singing"] = False
-
-    # Save transcript to JSON
-    transcript_dir = os.path.join(tmp_path, "transcript")
-    os.makedirs(transcript_dir, exist_ok=True)
-    transcript_path = os.path.join(transcript_dir, "transcript.json")
-    to_save = {
-        "segments": result_with_speakers["segments"],
-        "language": result_with_speakers["language"],
-        "text": result_with_speakers["text"],
-    }
-    with open(transcript_path, "w") as f:
-        json.dump(to_save, f, indent=2)
+        speaker = seg.get("speaker")
+        if speaker:
+            seg["speaker_embedding"] = speaker_embeddings.get(speaker, [])
 
     return result_with_speakers
 
@@ -202,6 +196,7 @@ class DiarizationResult(TypedDict, total=False):
     audioFilePath: str
     speaker: Optional[str]
     is_singing: bool
+    speaker_embedding: Optional[list[float]]
 
 
 class AssignWordSpeakersResult(TypedDict):
@@ -233,27 +228,30 @@ def assign_word_speakers(
     transcript_segments = transcript_result["segments"]
     for seg in transcript_segments:
         speaker = None
-        # assign speaker to segment (if any)
-        diarize_df["intersection"] = np.minimum(
-            diarize_df["end"], seg["end"]
-        ) - np.maximum(diarize_df["start"], seg["start"])
-        diarize_df["union"] = np.maximum(diarize_df["end"], seg["end"]) - np.minimum(
+        intersections = np.minimum(diarize_df["end"], seg["end"]) - np.maximum(
             diarize_df["start"], seg["start"]
         )
-        # remove no hit, otherwise we look for closest (even negative intersection...)
+        inter_series = pd.Series(intersections, index=diarize_df.index)
         if not fill_nearest:
-            dia_tmp = diarize_df[diarize_df["intersection"] > 0]
+            valid = inter_series > 0
+            if not valid.any():
+                speaker = None
+            else:
+                speaker_sums = (
+                    inter_series[valid]
+                    .groupby(diarize_df.loc[valid, "speaker"])
+                    .sum()
+                    .sort_values(ascending=False)
+                )
+                speaker = speaker_sums.index[0]
         else:
-            dia_tmp = diarize_df
-        if len(dia_tmp) > 0:
-            # sum over speakers
-            speaker = (
-                dia_tmp.groupby("speaker")["intersection"]
+            speaker_sums = (
+                inter_series.groupby(diarize_df["speaker"])
                 .sum()
                 .sort_values(ascending=False)
-                .index[0]
             )
-        result.append({**seg, "speaker": (str(speaker) or "unknown")})
+            speaker = speaker_sums.index[0]
+        result.append({**seg, "speaker": speaker})
 
         # assign speaker to words
         # if "words" in seg:

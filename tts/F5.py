@@ -25,9 +25,9 @@ def generate_tts_custom(
 
     # Load the model
     if checkpoint_path == "checkpoints/f5_tts_multilingual.pth":
-        model = F5TTS(device=device, model="F5TTS_Base")
+        model = F5TTS(model="F5TTS_Base")
     else:
-        model = F5TTS(ckpt_file=checkpoint_path, device=device)
+        model = F5TTS(ckpt_file=checkpoint_path)
 
     # Perform inference
     audio, sr, spec = model.infer(ref_audio_path, ref_text=ref_text, gen_text=text)

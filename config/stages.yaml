@@ -1,0 +1,47 @@
+stages:
+  - name: convert_mp4_to_wav
+    module: convert.mp4_wav
+    function: convert_mp4_to_wav
+    inputs: []
+    outputs: json
+  - name: separate_audio
+    module: convert.separate_audio
+    function: separate
+    inputs: [convert_mp4_to_wav]
+    outputs: json
+  - name: transcribe
+    module: transcription.whisper
+    function: transcript
+    inputs: [separate_audio]
+    outputs: json
+  # Optional: emotion stage - enable via flag in main.py
+  # - name: emotion
+  #   module: transcription.emotion
+  #   function: detect_emotions
+  #   inputs: [transcribe]
+  #   outputs: json
+  - name: translate
+    module: translate.openAi
+    function: translate_with_openai
+    inputs: [transcribe]  # or [emotion] if enabled
+    outputs: json
+  - name: build_refs
+    module: tts.orchestrator
+    function: build_speaker_refs
+    inputs: [translate, separate_audio]
+    outputs: json
+  - name: generate_tts
+    module: tts.orchestrator
+    function: generate_dubbed_segments
+    inputs: [build_refs, translate, transcribe]
+    outputs: json
+  - name: mix_audio
+    module: dub.mixer
+    function: mix_audio
+    inputs: [generate_tts, separate_audio]
+    outputs: json
+  - name: mux_video
+    module: main
+    function: mux_video
+    inputs: [mix_audio]
+    outputs: json

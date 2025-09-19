@@ -1,0 +1,174 @@
+# AGENTS.md: Pipeline Stages as Modular Agents
+
+This file documents each stage (agent) in the dubbing pipeline. Each agent is a self-contained function/module that processes inputs (prior JSONs via metadata) and produces JSON outputs. Agents are config-driven for scalability.
+
+## General Agent Structure
+- **Inputs**: List of prior stages to load JSON from (via `load_previous_result`).
+- **Outputs**: JSON saved to `tmp/{stage}_results/{stage}.json`, tracked in `metadata.json`.
+- **Dependencies**: Reuses existing functions; new agents implement similar pattern.
+- **Adding New Agents**: 1. Add to `config/stages.yaml`. 2. Implement `{module}.{function}(tmp_path, metadata_path, **kwargs)`. 3. Define JSON schema here. 4. Update README.
+
+## Agents
+
+### 1. convert_mp4_to_wav
+- **Purpose**: Extract full audio from MP4 to WAV.
+- **Module/Function**: `convert.mp4_wav.convert_mp4_to_wav`
+- **Inputs**: None.
+- **Outputs**: JSON with audio paths, metadata.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "convert_mp4_to_wav",
+    "full_wav_path": "full.wav",
+    "duration": 120.5,
+    "sample_rate": 22050,
+    "channels": 1
+  }
+  ```
+- **Notes**: Uses FFmpeg internally.
+
+### 2. separate_audio
+- **Purpose**: Separate vocals from instrumental using Demucs.
+- **Module/Function**: `convert.separate_audio.separate`
+- **Inputs**: [convert_mp4_to_wav] (load full_wav_path).
+- **Outputs**: JSON with separated paths.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "separate_audio",
+    "vocals_path": "vocals.wav",
+    "instrumental_path": "accompaniment.wav",
+    "separation_method": "demucs",
+    "metadata": {"total_duration": 120.5}
+  }
+  ```
+- **Notes**: Preserves music for later mixing.
+
+### 3. transcribe
+- **Purpose**: Transcribe vocals + diarization (speakers/embeddings) for RVC.
+- **Module/Function**: `transcription.whisper.transcript`
+- **Inputs**: [separate_audio] (load vocals_path).
+- **Outputs**: JSON with segments, speakers, embeddings.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "transcribe",
+    "segments": [
+      {
+        "start": 0.0, "end": 5.0, "text": "Dialogue", "speaker": "SPEAKER_00",
+        "is_singing": false, "no_speech_prob": 0.1, "audioFilePath": "whisper_audio/0_5.wav",
+        "speaker_embedding": [0.1, 0.2, ...]
+      }
+    ],
+    "language": "ja", "text": "Full text",
+    "speaker_embeddings": {"SPEAKER_00": [0.1, 0.2, ...]}
+  }
+  ```
+- **Notes**: Reuses Whisper + Pyannote; embeddings for RVC voice cloning (download model per unique speaker).
+
+### 4. emotion (Optional)
+- **Purpose**: Detect emotions in segments for expressive TTS.
+- **Module/Function**: `transcription.emotion.detect_emotions`
+- **Inputs**: [transcribe].
+- **Outputs**: JSON with emotions added to segments.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "emotion",
+    "segments": [
+      {"start": 0.0, "end": 5.0, "text": "Dialogue", "speaker": "SPEAKER_00", "emotion": "angry", "confidence": 0.8}
+    ],
+    "overall_emotions": {"SPEAKER_00": {"angry": 0.6, "neutral": 0.4}}
+  }
+  ```
+- **Notes**: Toggle in config; integrate with existing emotion.py.
+
+### 5. translate
+- **Purpose**: Translate segments to target lang, preserve timing/speakers.
+- **Module/Function**: `translate.openAi.translate_with_openai`
+- **Inputs**: [transcribe] (or [emotion] if active).
+- **Outputs**: JSON with translated_text.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "translate",
+    "segments": [
+      {"start": 0.0, "end": 5.0, "original_text": "Dialogue", "translated_text": "Dubbed line",
+       "speaker": "SPEAKER_00", "is_singing": false}
+    ],
+    "target_lang": "en", "full_text": "Translated full"
+  }
+  ```
+- **Notes**: Uses OpenAI; context from prior segments.
+
+### 6. build_refs
+- **Purpose**: Extract reference audios per speaker from original vocals.
+- **Module/Function**: Custom in main.py or tts (extract first non-singing 4s).
+- **Inputs**: [translate], [separate_audio] (for waveform).
+- **Outputs**: JSON with ref paths.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "build_refs",
+    "refs_by_speaker": {"SPEAKER_00": "refs/SPEAKER_00.wav"},
+    "default_ref": "refs/default.wav",
+    "extraction_criteria": "first 4s non-singing"
+  }
+  ```
+- **Notes**: Uses torchaudio for slicing.
+
+### 7. generate_tts
+- **Purpose**: Generate TTS per segment, clone voice via RVC using diarization.
+- **Module/Function**: `tts.orchestrator.generate_dubbed_segments`
+- **Inputs**: [build_refs], [translate], [transcribe] (embeddings for RVC model selection).
+- **Outputs**: JSON with TTS file paths/timings.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "generate_tts",
+    "tts_segments": [
+      {"path": "tts/seg1.wav", "start": 0.0, "end": 5.0, "speaker": "SPEAKER_00", "duration": 4.8}
+    ],
+    "rvc_models_used": {"SPEAKER_00": "rvc_model_id"},
+    "total_duration": 120.5
+  }
+  ```
+- **Notes**: Skip singing; download RVC models based on embedding similarity to avoid unwanted clones.
+
+### 8. mix_audio
+- **Purpose**: Mix TTS with original instrumental + music preservation.
+- **Module/Function**: `dub.mixer.mix_audio`
+- **Inputs**: [generate_tts], [separate_audio].
+- **Outputs**: JSON with dubbed WAV path.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "mix_audio",
+    "dubbed_wav_path": "dubbed.wav",
+    "mixing_params": {"crossfade_duration": 0.1, "volume_adjust": 1.0}
+  }
+  ```
+- **Notes**: Copy original for music segments.
+
+### 9. mux_video
+- **Purpose**: Mux dubbed audio with original video.
+- **Module/Function**: FFmpeg in main.py.
+- **Inputs**: [mix_audio].
+- **Outputs**: JSON with final paths.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "mux_video",
+    "final_video_path": "output.mp4",
+    "mux_params": {"video_codec": "copy", "audio_codec": "aac"}
+  }
+  ```
+- **Notes**: No re-encode video.
+
+## Extending the Pipeline
+To add a new stage (e.g., "post_process"):
+1. Implement `new_module.post_process(tmp_path, metadata_path) -> data`.
+2. Append to `config/stages.yaml` with inputs/outputs.
+3. Define schema in this file.
+4. Update downstream inputs if needed.
+5. Run: Pipeline auto-includes via config.

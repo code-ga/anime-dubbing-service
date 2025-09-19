@@ -14,6 +14,9 @@ from tts.orchestrator import generate_dubbed_segments
 from dub.mixer import mix_audio
 from convert.separate_audio import separate
 
+import yaml
+import importlib
+
 from datetime import datetime
 from utils.metadata import (
     load_metadata,
@@ -21,7 +24,8 @@ from utils.metadata import (
     update_success,
     update_failure,
     set_overall_error,
-    is_complete
+    is_complete,
+    load_previous_result,
 )
 
 load_dotenv("./.env")
@@ -85,7 +89,11 @@ def main():
             sys.exit(0)
     if metadata is None:
         metadata = create_metadata(
-            metadata_path, input_abs, os.path.abspath(args.output_mp4), tmp_path, args.target_lang
+            metadata_path,
+            input_abs,
+            os.path.abspath(args.output_mp4),
+            tmp_path,
+            args.target_lang,
         )
     # Validate completed stages outputs
     for i, entry in enumerate(metadata["completed_stages"]):
@@ -100,169 +108,125 @@ def main():
         if invalid:
             metadata["completed_stages"] = metadata["completed_stages"][:i]
             metadata["current_stage"] = stage
-            temp_path = metadata_path + '.tmp'
-            with open(temp_path, 'w') as f:
+            temp_path = metadata_path + ".tmp"
+            with open(temp_path, "w") as f:
                 json.dump(metadata, f, indent=4)
             os.replace(temp_path, metadata_path)
             break
 
-    try:
+    # Load stages config
+    config_path = os.path.join(".", "config", "stages.yaml")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Stages config not found: {config_path}")
+    with open(config_path, "r") as f:
+        config_data = yaml.safe_load(f)
+    stages = config_data["stages"]
+
+    def validate_prerequisites(metadata_path, stages, metadata):
         current_stage = metadata["current_stage"]
-        while current_stage != "complete":
-            if current_stage == "convert_mp4_to_wav":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    original_wav = os.path.join(tmp_path, "full.wav")
-                    convert_mp4_to_wav(args.input_mp4, original_wav)
-                    outputs = {"full_wav": "full.wav"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "separate_audio":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    original_wav = os.path.join(tmp_path, "full.wav")
-                    vocals_path, instrumental_path = separate(original_wav, tmp_path)
-                    outputs = {"vocals": "vocals.wav", "instrumental": "accompaniment.wav"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "transcribe":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    vocals_path = os.path.join(tmp_path, "vocals.wav")
-                    audio_transcript = transcript(vocals_path, tmp_path=tmp_path)
-                    transcript_path = os.path.join(transcript_dir, "transcript.json")
-                    with open(transcript_path, "w") as f:
-                        json.dump(audio_transcript, f, indent=4)
-                    outputs = {"transcript_json": "transcript/transcript.json"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                    raise Exception("Simulated failure after transcription for testing resumption")
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "translate":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    transcript_path = os.path.join(transcript_dir, "transcript.json")
-                    with open(transcript_path, "r") as f:
-                        audio_transcript = json.load(f)
-                    translated = translate_with_openai(
-                        audio_transcript,
-                        tmp_path,
-                        args.target_lang,
-                        singing_model=args.singing_model,
-                    )
-                    translated_path = os.path.join(translated_dir, "translated.json")
-                    with open(translated_path, "w") as f:
-                        json.dump(translated, f, indent=4)
-                    outputs = {"translated_json": "translated/translated.json"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "build_refs":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    ref_audios_by_speaker = {}
-                    translated_path = os.path.join(translated_dir, "translated.json")
-                    with open(translated_path, "r") as f:
-                        translated_data = json.load(f)
-                    vocals_path = os.path.join(tmp_path, "vocals.wav")
-                    waveform, sample_rate = torchaudio.load(vocals_path)
-                    speakers = set(
-                        seg.get("speaker", "default") for seg in translated_data.get("segments", [])
-                    )
-                    for speaker in speakers:
-                        non_singing_segs = [
-                            seg
-                            for seg in translated_data["segments"]
-                            if seg.get("speaker") == speaker and not seg.get("is_singing", False)
-                        ]
-                        if non_singing_segs:
-                            first_seg = non_singing_segs[0]
-                            start = first_seg["start"]
-                            start_sample = int((start + 0.5) * sample_rate)
-                            duration = 4.0
-                            end_sample = int((start + 0.5 + duration) * sample_rate)
-                            if end_sample > waveform.shape[1]:
-                                end_sample = waveform.shape[1]
-                            ref_waveform = waveform[:, start_sample:end_sample]
-                            ref_path = os.path.join(refs_dir, f"{speaker}.wav")
-                            torchaudio.save(ref_path, ref_waveform, sample_rate)
-                            ref_audios_by_speaker[speaker] = ref_path
-
-                    default_ref = None
-                    if ref_audios_by_speaker:
-                        first_speaker = list(ref_audios_by_speaker.keys())[0]
-                        default_ref_path = os.path.join(refs_dir, "default.wav")
-                        shutil.copy(ref_audios_by_speaker[first_speaker], default_ref_path)
-                        default_ref = default_ref_path
-
-                    outputs = {"refs_dir": "refs"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "generate_tts":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    refs_dir = os.path.join(tmp_path, "refs")
-                    ref_files = [f for f in os.listdir(refs_dir) if f.endswith('.wav') and f != 'default.wav']
-                    ref_audios_by_speaker = {os.path.splitext(f)[0]: os.path.join(refs_dir, f) for f in ref_files}
-                    default_ref = os.path.join(refs_dir, "default.wav") if os.path.exists(os.path.join(refs_dir, "default.wav")) else None
-                    tts_segments = generate_dubbed_segments(
-                        tmp_path, ref_audios_by_speaker, default_ref
-                    )
-                    outputs = {"tts_dir": "tts"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "mix_audio":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    dubbed_wav = os.path.join(tmp_path, "dubbed.wav")
-                    mix_audio(tmp_path, dubbed_wav)
-                    outputs = {"dubbed_wav": "dubbed.wav"}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
-            elif current_stage == "mux_video":
-                start_time = datetime.utcnow().isoformat() + "Z"
-                try:
-                    dubbed_wav = os.path.join(tmp_path, "dubbed.wav")
-                    cmd = [
-                        "ffmpeg",
-                        "-i",
-                        args.input_mp4,
-                        "-i",
-                        dubbed_wav,
-                        "-c:v",
-                        "copy",
-                        "-c:a",
-                        "aac",
-                        "-map",
-                        "0:v:0",
-                        "-map",
-                        "1:a:0",
-                        "-y",
-                        args.output_mp4,
-                    ]
-                    subprocess.run(cmd, check=True)
-                    outputs = {}
-                    update_success(metadata_path, current_stage, start_time, outputs)
-                except Exception as stage_e:
-                    update_failure(metadata_path, current_stage, start_time, str(stage_e))
-                    raise
+        current_idx = next(
+            (
+                i
+                for i, stage_info in enumerate(stages)
+                if stage_info["name"] == current_stage
+            ),
+            len(stages),
+        )
+        for i in range(current_idx):
+            stage_name = stages[i]["name"]
+            if stage_name not in metadata["stage_results"]:
+                print(
+                    f"Missing prerequisite stage '{stage_name}'. Resetting current_stage to '{stage_name}'."
+                )
+                metadata["current_stage"] = stage_name
+                temp_path = metadata_path + ".tmp"
+                with open(temp_path, "w") as f:
+                    json.dump(metadata, f, indent=4)
+                os.replace(temp_path, metadata_path)
+                return i
             else:
-                raise ValueError(f"Unknown current_stage: {current_stage}")
+                json_path = metadata["stage_results"][stage_name]["json_path"]
+                if not os.path.exists(json_path):
+                    print(
+                        f"Missing result file for stage '{stage_name}'. Resetting current_stage to '{stage_name}'."
+                    )
+                    metadata["current_stage"] = stage_name
+                    temp_path = metadata_path + ".tmp"
+                    with open(temp_path, "w") as f:
+                        json.dump(metadata, f, indent=4)
+                    os.replace(temp_path, metadata_path)
+                    return i
+        return current_idx
 
-            metadata = load_metadata(metadata_path)
-            current_stage = metadata["current_stage"]
+    try:
+        # Validate prerequisites and potentially reset current_stage
+        current_idx = validate_prerequisites(metadata_path, stages, metadata)
+        current_stage = metadata["current_stage"]
+
+        if current_idx == len(stages):
+            print("All stages completed.")
+        else:
+            for stage_idx in range(current_idx, len(stages)):
+                stage_info = stages[stage_idx]
+                stage = stage_info["name"]
+                module_path = stage_info["module"]
+                func_name = stage_info["function"]
+                inputs = stage_info["inputs"]
+                start_time = datetime.utcnow().isoformat() + "Z"
+                print(stage)
+                stage_data = None
+                try:
+                    # Load input data from previous stages
+                    inputs_data = {}
+                    for inp in inputs:
+                        inputs_data[inp] = load_previous_result(metadata_path, inp)
+
+                    # Dynamic import and call
+                    module_obj = importlib.import_module(module_path)
+                    func = getattr(module_obj, func_name)
+
+                    # Call function with stage-specific args
+                    if stage == "convert_mp4_to_wav":
+                        stage_data = func(
+                            tmp_path, metadata_path, inputs_data, input_file=input_abs
+                        )
+                    elif stage == "translate":
+                        stage_data = func(
+                            tmp_path,
+                            metadata_path,
+                            inputs_data,
+                            target_lang=args.target_lang,
+                            singing_model=args.singing_model,
+                        )
+                    elif stage == "mux_video":
+                        stage_data = func(
+                            tmp_path,
+                            metadata_path,
+                            inputs_data,
+                            input_file=input_abs,
+                            output_file=os.path.abspath(args.output_mp4),
+                        )
+                    else:
+                        stage_data = func(tmp_path, metadata_path, inputs_data)
+
+                    print(stage_data)
+
+                    # Update success with stage_data
+                    update_success(
+                        metadata_path, stage, start_time, None, stage_data=stage_data
+                    )
+                except Exception as stage_e:
+                    # Partial outputs if available
+                    partial_outputs = (
+                        stage_data.get("output_files", {}) if stage_data else {}
+                    )
+                    update_failure(
+                        metadata_path, stage, start_time, str(stage_e), partial_outputs
+                    )
+                    raise
+
+        # Save final results
+        save_final_results(tmp_path, metadata_path, args.output_mp4)
 
         print(f"Successfully created {args.output_mp4}")
 
@@ -276,11 +240,105 @@ def main():
                 else:
                     os.remove(item_path)
     except Exception as e:
-        if 'metadata_path' in locals():
+        if "metadata_path" in locals():
             set_overall_error(metadata_path, str(e))
         print(f"Error in processing: {e}")
         sys.exit(1)
 
 
+def save_final_results(tmp_path, metadata_path, output_file):
+    metadata = load_metadata(metadata_path)
+    if not metadata:
+        raise ValueError("Metadata not found")
+
+    timestamp = (
+        metadata["timestamps"]["workflow_start"]
+        .replace(":", "")
+        .replace(".", "")
+        .replace("Z", "")
+    )
+    results_dir = os.path.join("./results", timestamp)
+    os.makedirs(results_dir, exist_ok=True)
+
+    # Copy output video
+    output_basename = os.path.basename(output_file)
+    shutil.copy(output_file, os.path.join(results_dir, f"dubbed_{output_basename}"))
+
+    # Copy metadata
+    shutil.copy(metadata_path, os.path.join(results_dir, "metadata.json"))
+
+    # Copy key JSONs
+    stage_results = metadata.get("stage_results", {})
+    key_stages = {
+        "transcribe.json": "transcribe",
+        "translated.json": "translate",
+        "tts.json": "generate_tts",
+    }
+    for dest_name, stage_name in key_stages.items():
+        json_path = stage_results.get(stage_name, {}).get("json_path")
+        if json_path and os.path.exists(json_path):
+            shutil.copy(json_path, os.path.join(results_dir, dest_name))
+
+    # Extract and save diarization embeddings
+    transcribe_path = stage_results.get("transcribe", {}).get("json_path")
+    if transcribe_path and os.path.exists(transcribe_path):
+        with open(transcribe_path, "r") as f:
+            transcribe_data = json.load(f)
+        embeddings = transcribe_data.get("speaker_embeddings", {})
+        emb_path = os.path.join(results_dir, "diarization_embeddings.json")
+        with open(emb_path, "w") as f:
+            json.dump({"speakers": embeddings}, f, indent=4)
+
+
 if __name__ == "__main__":
     main()
+
+
+def mux_video(
+    tmp_path, metadata_path, inputs_data, input_file, output_file, **kwargs
+) -> dict:
+    """
+    Mux dubbed audio with original video using FFmpeg.
+
+    Args:
+        tmp_path: Path to temporary directory.
+        metadata_path: Path to metadata.
+        inputs_data: Dict of previous stage data.
+        input_file: Original MP4.
+        output_file: Output MP4.
+        **kwargs: Additional arguments.
+
+    Returns:
+        Stage data with final_video_path, mux_params.
+    """
+    mix_data = inputs_data["mix_audio"]
+    dubbed_wav = os.path.join(tmp_path, mix_data["dubbed_wav_path"])
+
+    cmd = [
+        "ffmpeg",
+        "-i",
+        input_file,
+        "-i",
+        dubbed_wav,
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-y",
+        output_file,
+    ]
+    subprocess.run(cmd, check=True)
+
+    stage_data = {
+        "stage": "mux_video",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "errors": [],
+        "final_video_path": os.path.basename(output_file),
+        "mux_params": {"video_codec": "copy", "audio_codec": "aac"},
+    }
+
+    return stage_data

@@ -26,6 +26,7 @@ def create_metadata(path, input_file, output_file, tmp_dir, target_lang):
         "timestamps": {
             "workflow_start": datetime.utcnow().isoformat() + "Z"
         },
+        "stage_results": {},
         "errors": {
             "overall": None,
             "per_stage": {}
@@ -38,7 +39,7 @@ def create_metadata(path, input_file, output_file, tmp_dir, target_lang):
     os.replace(temp_path, path)
     return metadata
 
-def update_success(path, stage, start_time, outputs):
+def update_success(path, stage, start_time, outputs, stage_data=None):
     metadata = load_metadata(path)
     if metadata is None:
         raise ValueError("Metadata file not found")
@@ -46,13 +47,23 @@ def update_success(path, stage, start_time, outputs):
     current_stage = metadata["current_stage"]
     if current_stage != stage:
         raise ValueError(f"Expected current_stage '{stage}', but got '{current_stage}'")
-    
+    if stage_data:
+        try:
+            save_stage_result(path, stage, stage_data)
+            metadata = load_metadata(path)
+            if metadata is None:
+                raise ValueError("Metadata file not found after saving stage result")
+        except Exception as save_e:
+            print(f"Error saving stage result for {stage}: {save_e}")
+            raise
+
     end_time = datetime.utcnow().isoformat() + "Z"
+    output_files = stage_data.get("output_files", {}) if stage_data else {}
     entry = {
         "stage": stage,
         "start_time": start_time,
         "end_time": end_time,
-        "output_files": outputs or {},
+        "output_files": output_files,
         "error": None
     }
     metadata["completed_stages"].append(entry)
@@ -114,6 +125,59 @@ def set_overall_error(path, error_msg):
     with open(temp_path, 'w') as f:
         json.dump(metadata, f, indent=4)
     os.replace(temp_path, path)
+
+def save_stage_result(metadata_path, stage, data):
+    metadata = load_metadata(metadata_path)
+    if metadata is None:
+        raise ValueError("Metadata file not found")
+    
+    tmp_dir = metadata["tmp_dir"]
+    results_dir = os.path.join(tmp_dir, f"{stage}_results")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    json_path = os.path.join(results_dir, f"{stage}.json")
+    
+    # Add common fields if not present
+    if "stage" not in data:
+        data["stage"] = stage
+    if "timestamp" not in data:
+        data["timestamp"] = datetime.utcnow().isoformat() + "Z"
+    if "errors" not in data:
+        data["errors"] = []
+    
+    with open(json_path, 'w') as f:
+        json.dump(data, f, indent=4)
+    
+    if "stage_results" not in metadata:
+        metadata["stage_results"] = {}
+    metadata["stage_results"][stage] = {
+        "json_path": json_path,
+        "output_files": data.get("output_files", {})
+    }
+    
+    # Atomic write metadata
+    temp_path = metadata_path + '.tmp'
+    with open(temp_path, 'w') as f:
+        json.dump(metadata, f, indent=4)
+    os.replace(temp_path, metadata_path)
+    
+
+
+def load_previous_result(metadata_path, prev_stage):
+    metadata = load_metadata(metadata_path)
+    if metadata is None:
+        raise ValueError("Metadata file not found")
+    
+    if "stage_results" not in metadata or prev_stage not in metadata["stage_results"]:
+        raise ValueError(f"Previous stage '{prev_stage}' result not found in metadata")
+    
+    json_path = metadata["stage_results"][prev_stage]["json_path"]
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"Stage result file not found: {json_path}")
+    
+    with open(json_path, 'r') as f:
+        return json.load(f)
+
 
 def is_complete(metadata):
     return metadata.get("current_stage") == "complete" and not metadata["errors"]["overall"]
