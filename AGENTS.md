@@ -102,20 +102,28 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 - **Notes**: Uses OpenAI; context from prior segments.
 
 ### 6. build_refs
-- **Purpose**: Extract reference audios per speaker from original vocals.
+- **Purpose**: Extract reference audios per speaker from original vocals with re-transcription for improved voice cloning accuracy.
 - **Module/Function**: Custom in main.py or tts (extract first non-singing 4s).
 - **Inputs**: [translate], [separate_audio] (for waveform).
-- **Outputs**: JSON with ref paths.
+- **Outputs**: JSON with ref paths and speaker-specific transcribed text.
 - **JSON Schema**:
   ```json
   {
     "stage": "build_refs",
-    "refs_by_speaker": {"SPEAKER_00": "refs/SPEAKER_00.wav"},
-    "default_ref": "refs/default.wav",
-    "extraction_criteria": "first 4s non-singing"
+    "refs_by_speaker": {
+      "SPEAKER_00": {
+        "audio_path": "refs/SPEAKER_00.wav",
+        "ref_text": "Transcribed text from this specific reference audio"
+      }
+    },
+    "default_ref": {
+      "audio_path": "refs/default.wav",
+      "ref_text": "Transcribed text from default reference audio"
+    },
+    "extraction_criteria": "first 4s non-singing segments per speaker, with re-transcription"
   }
   ```
-- **Notes**: Uses torchaudio for slicing.
+- **Notes**: Uses torchaudio for slicing. Re-transcription of reference audio for better voice cloning accuracy. Speaker-specific transcribed text that matches the reference audio content. Improved alignment between ref_audio and ref_text for F5-TTS.
 
 ### 7. generate_tts
 - **Purpose**: Generate TTS per segment, clone voice via RVC using diarization.

@@ -35,6 +35,7 @@ stages:
     function: generate_dubbed_segments
     inputs: [build_refs, translate, transcribe]
     outputs: json
+    tts_method: "f5"  # Options: "f5", "edge_tts"
   - name: mix_audio
     module: dub.mixer
     function: mix_audio

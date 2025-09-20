@@ -3,13 +3,15 @@ from audio_separator.separator import Separator
 from datetime import datetime
 from utils.metadata import save_stage_result
 import shutil
+import gc
+import torch
 
 
 def separate(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
     full_wav_path = inputs_data["convert_mp4_to_wav"]["full_wav_path"]
     audio_path = os.path.join(tmp_path, full_wav_path)
     output_dir = tmp_path
-    
+
     # Initialize the Separator class (with optional configuration properties, below)
     separator = Separator(
         model_file_dir=os.path.join(os.path.abspath("./models"), "audio_separator"),
@@ -35,10 +37,10 @@ def separate(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
     final_instrumental = os.path.join(tmp_path, "accompaniment.wav")
     shutil.copy(vocals_path, final_vocals)
     shutil.copy(instrumental_path, final_instrumental)
-    
+
     # Get total duration from previous stage
     total_duration = inputs_data["convert_mp4_to_wav"]["duration"]
-    
+
     stage_data = {
         "stage": "separate_audio",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -46,7 +48,13 @@ def separate(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
         "vocals_path": "vocals.wav",
         "instrumental_path": "accompaniment.wav",
         "separation_method": "audio_separator",
-        "metadata": {"total_duration": total_duration}
+        "metadata": {"total_duration": total_duration},
     }
-    
+
+    # Clean up model and free memory
+    del separator
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     return stage_data

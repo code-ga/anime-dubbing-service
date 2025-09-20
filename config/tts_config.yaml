@@ -1,0 +1,53 @@
+# TTS Configuration Settings
+# This file contains configuration options for different TTS methods
+
+# Default TTS method (used when not specified in stages.yaml)
+default_tts_method: "f5"
+
+# Available TTS methods and their configurations
+tts_methods:
+
+  # F5-TTS Configuration
+  f5:
+    name: "F5-TTS"
+    description: "Advanced TTS with voice cloning capabilities"
+    enabled: true
+    config:
+      model_path: "models/f5-tts"
+      device: "cuda"  # Options: "cpu", "cuda", "auto"
+      voice_cloning: true
+      emotion_support: false
+      language_support: ["en", "ja", "zh", "ko", "es", "fr", "de"]
+
+  # Edge-TTS Configuration
+  edge_tts:
+    name: "Edge TTS"
+    description: "Microsoft Edge TTS with natural voices"
+    enabled: true
+    config:
+      voice: "en-US-AriaNeural"  # Default voice
+      rate: "+0%"  # Speech rate (-100% to +100%)
+      volume: "+0%"  # Volume level (-100% to +100%)
+      pitch: "+0Hz"  # Pitch adjustment (-50Hz to +50Hz)
+      style: "general"  # Speaking style
+      style_degree: 1.0  # Style intensity (0.01 to 2.0)
+      language_support: ["en", "ja", "zh", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi"]
+
+# Voice mapping for different speakers (optional)
+# Maps speaker IDs to specific TTS voices
+voice_mapping:
+  SPEAKER_00: "en-US-AriaNeural"  # Default female voice
+  SPEAKER_01: "en-US-GuyNeural"    # Default male voice
+  # Add more speaker mappings as needed
+
+# Quality settings
+quality:
+  sample_rate: 22050  # Target sample rate for audio
+  bitrate: "128k"     # Target bitrate for compressed audio
+  format: "wav"       # Output format (wav, mp3, etc.)
+
+# Performance settings
+performance:
+  batch_size: 1       # Number of segments to process in parallel
+  max_workers: 4      # Maximum number of concurrent TTS workers
+  timeout: 300        # Timeout in seconds for TTS generation

@@ -27,11 +27,15 @@ from utils.metadata import (
     is_complete,
     load_previous_result,
 )
+from utils.logger import get_logger
 
 load_dotenv("./.env")
 
 
 def main():
+    # Initialize logger
+    logger = get_logger("anime-dubbing-pipeline")
+
     parser = argparse.ArgumentParser(
         description="Anime Dubbing Service with Music Preservation"
     )
@@ -53,12 +57,28 @@ def main():
     parser.add_argument(
         "--keep-tmp", action="store_true", help="Keep temporary files after processing"
     )
+    parser.add_argument(
+        "--tts-method",
+        default="edge-tts",
+        choices=["edge-tts", "f5-tts"],
+        help="TTS method to use for audio generation (default: edge-tts)"
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO)"
+    )
     args = parser.parse_args()
+
+    # Update logger level based on argument
+    logger.logger.setLevel(getattr(__import__('logging'), args.log_level.upper()))
 
     tmp_dir = os.environ.get("TMP_DIR", args.tmp_dir)
     tmp_path = os.path.abspath(tmp_dir)
     parent_dir = os.path.dirname(tmp_path) or "."
     if not os.access(parent_dir, os.W_OK):
+        logger.log_error("setup", ValueError(f"Cannot write to parent directory of tmp: {parent_dir}"))
         raise ValueError(f"Cannot write to parent directory of tmp: {parent_dir}")
     os.makedirs(tmp_path, exist_ok=True)
     transcript_dir = os.path.join(tmp_path, "transcript")
@@ -67,6 +87,8 @@ def main():
     os.makedirs(transcript_dir, exist_ok=True)
     os.makedirs(translated_dir, exist_ok=True)
     os.makedirs(refs_dir, exist_ok=True)
+
+    logger.log_file_operation("create", tmp_path, True)
 
     metadata_path = os.path.join(tmp_path, "metadata.json")
     input_abs = os.path.abspath(args.input_mp4)
@@ -117,10 +139,14 @@ def main():
     # Load stages config
     config_path = os.path.join(".", "config", "stages.yaml")
     if not os.path.exists(config_path):
+        logger.log_error("config", FileNotFoundError(f"Stages config not found: {config_path}"))
         raise FileNotFoundError(f"Stages config not found: {config_path}")
     with open(config_path, "r") as f:
         config_data = yaml.safe_load(f)
     stages = config_data["stages"]
+
+    # Log pipeline start (now that we have stages)
+    logger.log_pipeline_start(input_abs, os.path.abspath(args.output_mp4), len(stages))
 
     def validate_prerequisites(metadata_path, stages, metadata):
         current_stage = metadata["current_stage"]
@@ -135,9 +161,7 @@ def main():
         for i in range(current_idx):
             stage_name = stages[i]["name"]
             if stage_name not in metadata["stage_results"]:
-                print(
-                    f"Missing prerequisite stage '{stage_name}'. Resetting current_stage to '{stage_name}'."
-                )
+                logger.log_warning("prerequisites", f"Missing prerequisite stage '{stage_name}'. Resetting current_stage to '{stage_name}'.", "stage validation")
                 metadata["current_stage"] = stage_name
                 temp_path = metadata_path + ".tmp"
                 with open(temp_path, "w") as f:
@@ -147,9 +171,7 @@ def main():
             else:
                 json_path = metadata["stage_results"][stage_name]["json_path"]
                 if not os.path.exists(json_path):
-                    print(
-                        f"Missing result file for stage '{stage_name}'. Resetting current_stage to '{stage_name}'."
-                    )
+                    logger.log_warning("prerequisites", f"Missing result file for stage '{stage_name}'. Resetting current_stage to '{stage_name}'.", "file validation")
                     metadata["current_stage"] = stage_name
                     temp_path = metadata_path + ".tmp"
                     with open(temp_path, "w") as f:
@@ -164,7 +186,7 @@ def main():
         current_stage = metadata["current_stage"]
 
         if current_idx == len(stages):
-            print("All stages completed.")
+            logger.logger.info("✅ All stages completed.")
         else:
             for stage_idx in range(current_idx, len(stages)):
                 stage_info = stages[stage_idx]
@@ -173,7 +195,14 @@ def main():
                 func_name = stage_info["function"]
                 inputs = stage_info["inputs"]
                 start_time = datetime.utcnow().isoformat() + "Z"
-                print(stage)
+
+                # Log stage start
+                logger.log_stage_start(stage, stage_idx, len(stages))
+
+                logger.logger.info(f"🔧 Executing stage: {stage}")
+                logger.logger.info(f"📦 Module: {module_path}.{func_name}")
+                logger.logger.info(f"📥 Inputs: {inputs}")
+
                 stage_data = None
                 try:
                     # Load input data from previous stages
@@ -207,7 +236,7 @@ def main():
                             output_file=os.path.abspath(args.output_mp4),
                         )
                     else:
-                        stage_data = func(tmp_path, metadata_path, inputs_data)
+                        stage_data = func(tmp_path, metadata_path, inputs_data, tts_method=args.tts_method)
 
                     print(stage_data)
 
@@ -215,7 +244,21 @@ def main():
                     update_success(
                         metadata_path, stage, start_time, None, stage_data=stage_data
                     )
+
+                    # Log stage completion
+                    logger.log_stage_completion(stage, stage_idx, len(stages))
+
+                    # Log stage-specific information
+                    if stage_data:
+                        if "tts_method" in stage_data:
+                            logger.log_tts_method(stage_data["tts_method"])
+                        if "total_duration" in stage_data:
+                            logger.logger.info(f"  ⏱️  Stage output duration: {stage_data['total_duration']:.2f} seconds")
+
                 except Exception as stage_e:
+                    # Log error with context
+                    logger.log_error(stage, stage_e, "stage execution")
+
                     # Partial outputs if available
                     partial_outputs = (
                         stage_data.get("output_files", {}) if stage_data else {}
@@ -226,11 +269,19 @@ def main():
                     raise
 
         # Save final results
+        logger.logger.info("💾 Saving final results...")
         save_final_results(tmp_path, metadata_path, args.output_mp4)
 
-        print(f"Successfully created {args.output_mp4}")
+        output_file = args.output_mp4
+        logger.logger.info(f"✅ Successfully created {output_file}")
+        logger.log_file_operation("create", output_file, True)
+
+        # Log pipeline completion
+        total_duration = logger.get_elapsed_time()
+        logger.log_pipeline_completion(total_duration, success=True)
 
         if not args.keep_tmp:
+            logger.logger.info("🧹 Cleaning up temporary files...")
             for item in os.listdir(tmp_path):
                 if item == "metadata.json":
                     continue
@@ -239,10 +290,19 @@ def main():
                     shutil.rmtree(item_path)
                 else:
                     os.remove(item_path)
+            logger.logger.info("✅ Temporary files cleaned up")
     except Exception as e:
+        # Log overall error
+        logger.log_error("pipeline", e, "overall execution")
+
         if "metadata_path" in locals():
             set_overall_error(metadata_path, str(e))
-        print(f"Error in processing: {e}")
+
+        # Log pipeline completion with failure
+        total_duration = logger.get_elapsed_time()
+        logger.log_pipeline_completion(total_duration, success=False)
+
+        logger.logger.error(f"💥 Pipeline failed: {e}")
         sys.exit(1)
 
 

@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "audio-separator[gpu]>=0.36.1",
     "ctranslate2==4.4.0",
+    "edge-tts>=7.2.3",
     "f5-tts>=1.1.9",
     "ffmpeg-python>=0.2.0",
     "huggingface-hub[hf-xet]>=0.34.4",
@@ -19,6 +20,7 @@ dependencies = [
     "torchaudio>=2.8.0",
     "torchvision>=0.23.0",
     "transformers>=4.56.0",
+    "vocos>=0.1.0",
 ]
 [tool.uv.sources]
 torch = [

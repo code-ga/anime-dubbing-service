@@ -180,6 +180,15 @@ def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
         if speaker:
             seg["speaker_embedding"] = speaker_embeddings.get(speaker, [])
 
+    # Clean up Pyannote pipeline and free memory
+    del pipeline
+    del diarization
+    del embeddings
+    del diarize_df
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     return result_with_speakers
 
 

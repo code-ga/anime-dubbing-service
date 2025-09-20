@@ -1,6 +1,7 @@
 ffmpeg-python
 audio_separator[gpu]
-python-dotenv 
+python-dotenv
 transformers
 openai
 pyyaml
+edge-tts
