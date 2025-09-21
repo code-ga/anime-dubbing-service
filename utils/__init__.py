@@ -15,6 +15,13 @@ from .metadata import (
     save_stage_result,
     STAGES_ORDER
 )
+from .srt_export import (
+    export_segments_to_srt,
+    export_transcription_to_srt,
+    export_translation_to_srt,
+    create_srt_filename,
+    seconds_to_srt_time
+)
 
 __all__ = [
     'get_logger',
@@ -28,5 +35,10 @@ __all__ = [
     'is_complete',
     'load_previous_result',
     'save_stage_result',
-    'STAGES_ORDER'
+    'STAGES_ORDER',
+    'export_segments_to_srt',
+    'export_transcription_to_srt',
+    'export_translation_to_srt',
+    'create_srt_filename',
+    'seconds_to_srt_time'
 ]

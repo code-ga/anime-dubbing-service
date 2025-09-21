@@ -36,7 +36,8 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 - **😊 Emotion Detection**: Optional emotion analysis for more expressive dubbing (configurable)
 - **🎛️ Audio Mixing**: Professional audio mixing with crossfades and volume normalization
 - **📹 Video Processing**: Seamless video muxing without quality loss
-- **🔧 Extensible Architecture**: Easy to add new processing stages via configuration
+- **📝 Dual SRT Export**: Export both translated and original transcription subtitles in SRT format with customizable options (speakers, original text, translations)
+- ** Extensible Architecture**: Easy to add new processing stages via configuration
 
 ## 🚀 Quick Start
 
@@ -203,6 +204,14 @@ output.mp4             # Output dubbed video file
 --tts-method edge_tts  # TTS engine choice
 --keep-tmp            # Preserve temporary files
 --tmp-dir ./custom_tmp # Custom temporary directory
+
+# SRT Export Options
+--export-srt                    # Enable SRT subtitle export (exports both translated and original subtitles by default)
+--export-srt-directory ./srt    # Directory for SRT files (default: ./srt)
+--srt-text-field translated_text # Text field to export: "translated_text" or "original_text"
+--srt-include-speaker           # Include speaker information in subtitles
+--srt-include-original          # Include original text alongside translation
+--srt-title "Anime Subtitles"   # Optional title for SRT file
 ```
 
 ### Environment Variables
@@ -244,6 +253,15 @@ python main.py input.mp4 output.mp4 \
   --music_threshold 0.6 \
   --keep-tmp \
   --tmp-dir ./custom_tmp
+
+# With SRT subtitle export
+python main.py input.mp4 output.mp4 \
+  --target_lang en \
+  --export-srt \
+  --export-srt-directory ./subtitles \
+  --srt-text-field translated_text \
+  --srt-include-speaker \
+  --srt-title "My Anime Dubbed Subtitles"
 ```
 
 ### TTS Method Comparison Examples
@@ -264,6 +282,39 @@ python main.py anime.mp4 dubbed.mp4 --tts-method f5 --target_lang en
 
 # Professional dubbing quality
 python main.py input.mp4 output.mp4 --tts-method f5 --target_lang ja
+```
+
+### SRT Subtitle Export Examples
+
+#### Basic SRT Export
+```bash
+# Export both translated and original subtitles to default directory
+python main.py anime.mp4 dubbed.mp4 --target_lang en --export-srt
+
+# Export to custom directory
+python main.py input.mp4 output.mp4 --target_lang en --export-srt --export-srt-directory ./my_subtitles
+```
+
+#### Advanced SRT Export Options
+```bash
+# Export original text instead of translation
+python main.py anime.mp4 dubbed.mp4 --target_lang en --export-srt --srt-text-field original_text
+
+# Include speaker information in subtitles
+python main.py input.mp4 output.mp4 --target_lang en --export-srt --srt-include-speaker
+
+# Include both original and translated text
+python main.py anime.mp4 dubbed.mp4 --target_lang en --export-srt --srt-include-original
+
+# Full SRT export with all options
+python main.py input.mp4 output.mp4 \
+  --target_lang en \
+  --export-srt \
+  --export-srt-directory ./subtitles \
+  --srt-text-field translated_text \
+  --srt-include-speaker \
+  --srt-include-original \
+  --srt-title "Anime Episode 1 - English Dub"
 ```
 
 ### Batch Processing
@@ -297,6 +348,21 @@ results/{timestamp}/
 ├── translated.json            # Translated segments
 ├── tts.json                   # TTS generation results
 └── diarization_embeddings.json # Speaker voice embeddings
+```
+
+**With SRT Export** (when using `--export-srt`):
+
+```
+results/{timestamp}/
+├── dubbed_output.mp4          # Final dubbed video
+├── metadata.json              # Complete processing log
+├── transcribe.json            # Original transcription with diarization
+├── translated.json            # Translated segments
+├── tts.json                   # TTS generation results
+├── diarization_embeddings.json # Speaker voice embeddings
+└── srt/                       # SRT subtitle files directory
+    ├── translated_subtitles_en.srt  # Translated subtitles
+    └── original_transcription_ja.srt # Original transcription subtitles
 ```
 
 ### Processing Time Estimates
@@ -866,6 +932,14 @@ Options:
   --tts-method TEXT       TTS engine: "edge_tts" or "f5", default: "edge_tts"
   --keep-tmp             Preserve temporary files
   --tmp-dir TEXT          Custom temporary directory path
+
+SRT Export Options:
+  --export-srt                    Enable SRT subtitle export (exports both translated and original subtitles by default)
+  --export-srt-directory TEXT     Directory for SRT files, default: "./srt"
+  --srt-text-field TEXT           Text field: "translated_text" or "original_text"
+  --srt-include-speaker           Include speaker information in subtitles
+  --srt-include-original          Include original text alongside translation
+  --srt-title TEXT                Optional title for SRT file
 ```
 
 ### Configuration Files

@@ -1,33 +1,27 @@
 #!/usr/bin/env python3
+import argparse
+import importlib
 import json
 import os
-import subprocess
-import argparse
-import torchaudio
-import sys
 import shutil
+import subprocess
+import sys
+from datetime import datetime
+
+# import torchaudio
+import yaml
 from dotenv import load_dotenv
+
 from convert.mp4_wav import convert_mp4_to_wav
+from convert.separate_audio import separate
+from dub.mixer import mix_audio
 from transcription.whisper import transcript
 from translate.openAi import translate_with_openai
 from tts.orchestrator import generate_dubbed_segments
-from dub.mixer import mix_audio
-from convert.separate_audio import separate
-
-import yaml
-import importlib
-
-from datetime import datetime
-from utils.metadata import (
-    load_metadata,
-    create_metadata,
-    update_success,
-    update_failure,
-    set_overall_error,
-    is_complete,
-    load_previous_result,
-)
 from utils.logger import get_logger
+from utils.metadata import (create_metadata, is_complete, load_metadata,
+                            load_previous_result, set_overall_error,
+                            update_failure, update_success)
 
 load_dotenv("./.env")
 
@@ -55,6 +49,11 @@ def main():
     )
     parser.add_argument("--tmp-dir", default="./tmp", help="Temporary directory path")
     parser.add_argument(
+        "--export-srt-directory",
+        default="./srt",
+        help="Directory path for exporting SRT subtitle files (default: ./srt)"
+    )
+    parser.add_argument(
         "--keep-tmp", action="store_true", help="Keep temporary files after processing"
     )
     parser.add_argument(
@@ -68,6 +67,33 @@ def main():
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level (default: INFO)"
+    )
+    parser.add_argument(
+        "--export-srt",
+        action="store_true",
+        help="Export subtitles in SRT format"
+    )
+    parser.add_argument(
+        "--srt-text-field",
+        default="translated_text",
+        choices=["translated_text", "original_text"],
+        help="Text field to use for SRT export (default: translated_text)"
+    )
+    parser.add_argument(
+        "--srt-include-speaker",
+        action="store_true",
+        default=False,
+        help="Include speaker information in SRT subtitles (default: False)"
+    )
+    parser.add_argument(
+        "--srt-include-original",
+        action="store_true",
+        help="Include original text alongside translation in SRT (default: False)"
+    )
+    parser.add_argument(
+        "--srt-title",
+        type=str,
+        help="Optional title for SRT file"
     )
     args = parser.parse_args()
 
@@ -226,6 +252,12 @@ def main():
                             inputs_data,
                             target_lang=args.target_lang,
                             singing_model=args.singing_model,
+                            export_srt=args.export_srt,
+                            srt_text_field=args.srt_text_field,
+                            srt_include_speaker=args.srt_include_speaker,
+                            srt_include_original=args.srt_include_original,
+                            srt_title=args.srt_title,
+                            export_srt_directory=args.export_srt_directory,
                         )
                     elif stage == "mux_video":
                         stage_data = func(
@@ -340,6 +372,16 @@ def save_final_results(tmp_path, metadata_path, output_file):
         json_path = stage_results.get(stage_name, {}).get("json_path")
         if json_path and os.path.exists(json_path):
             shutil.copy(json_path, os.path.join(results_dir, dest_name))
+
+    # Copy SRT files if they exist
+    translate_data = stage_results.get("translate", {})
+    if translate_data:
+        # Check for SRT file in stage data
+        srt_filename = translate_data.get("stage_data", {}).get("srt_file")
+        if srt_filename:
+            srt_path = os.path.join(tmp_path, srt_filename)
+            if os.path.exists(srt_path):
+                shutil.copy(srt_path, os.path.join(results_dir, srt_filename))
 
     # Extract and save diarization embeddings
     transcribe_path = stage_results.get("transcribe", {}).get("json_path")

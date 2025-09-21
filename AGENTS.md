@@ -99,9 +99,48 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "target_lang": "en", "full_text": "Translated full"
   }
   ```
-- **Notes**: Uses OpenAI; context from prior segments.
+- **Notes**: Uses OpenAI; context from prior segments. Can optionally export SRT subtitles during translation (see export_srt agent).
 
-### 6. build_refs
+### 6. export_srt (Optional)
+- **Purpose**: Export both translated and original transcription data to SRT subtitle format for external use.
+- **Module/Function**: `utils.srt_export.export_translation_to_srt` (integrated into translate stage)
+- **Inputs**: [translate] (automatically triggered during translate stage when --export-srt flag is used).
+- **Outputs**: SRT file(s) saved to specified directory, JSON with export metadata.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "export_srt",
+    "srt_files": {
+      "translated": "translated_subtitles_en.srt",
+      "original": "original_transcription_en.srt"
+    },
+    "export_paths": {
+      "translated": "./srt/translated_subtitles_en.srt",
+      "original": "./srt/original_transcription_en.srt"
+    },
+    "export_params": {
+      "text_field": "translated_text",
+      "include_speaker": true,
+      "include_original": false,
+      "title": "Anime Dubbed Subtitles"
+    },
+    "file_sizes": {
+      "translated": 2048,
+      "original": 1892
+    },
+    "export_timestamp": "2025-01-21T12:00:00Z"
+  }
+  ```
+- **Command Line Integration**:
+  - `--export-srt`: Enable SRT export functionality (exports both translated and original subtitles by default)
+  - `--export-srt-directory`: Directory path for SRT files (default: ./srt)
+  - `--srt-text-field`: Text field to export ("translated_text" or "original_text")
+  - `--srt-include-speaker`: Include speaker information in subtitles
+  - `--srt-include-original`: Include original text alongside translation
+  - `--srt-title`: Optional title for SRT file
+- **Notes**: Integrated into translate stage; creates standard SRT files compatible with most video players. Files are automatically copied to results directory. By default, exports both translated subtitles and original transcription subtitles. Use `--srt-text-field` to control which text field is used for the primary export if needed.
+
+### 7. build_refs
 - **Purpose**: Extract reference audios per speaker from original vocals with re-transcription for improved voice cloning accuracy.
 - **Module/Function**: Custom in main.py or tts (extract first non-singing 4s).
 - **Inputs**: [translate], [separate_audio] (for waveform).
@@ -125,7 +164,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   ```
 - **Notes**: Uses torchaudio for slicing. Re-transcription of reference audio for better voice cloning accuracy. Speaker-specific transcribed text that matches the reference audio content. Improved alignment between ref_audio and ref_text for F5-TTS.
 
-### 7. generate_tts
+### 8. generate_tts
 - **Purpose**: Generate TTS per segment, clone voice via RVC using diarization.
 - **Module/Function**: `tts.orchestrator.generate_dubbed_segments`
 - **Inputs**: [build_refs], [translate], [transcribe] (embeddings for RVC model selection).
@@ -143,7 +182,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   ```
 - **Notes**: Skip singing; download RVC models based on embedding similarity to avoid unwanted clones.
 
-### 8. mix_audio
+### 9. mix_audio
 - **Purpose**: Mix TTS with original instrumental + music preservation.
 - **Module/Function**: `dub.mixer.mix_audio`
 - **Inputs**: [generate_tts], [separate_audio].
@@ -158,7 +197,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   ```
 - **Notes**: Copy original for music segments.
 
-### 9. mux_video
+### 10. mux_video
 - **Purpose**: Mux dubbed audio with original video.
 - **Module/Function**: FFmpeg in main.py.
 - **Inputs**: [mix_audio].

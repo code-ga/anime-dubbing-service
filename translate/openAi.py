@@ -1,10 +1,13 @@
-from openai import OpenAI
-from datetime import datetime
-import os
 import json
 import logging
-from typing import List, TypedDict, cast, Any, Optional
-from transcription.whisper import AssignWordSpeakersResult, DiarizationResult
+import os
+from datetime import datetime
+from typing import Any, List, Optional, TypedDict, cast
+
+from openai import OpenAI
+
+from utils.srt_export import (create_srt_filename, export_transcription_to_srt,
+                              export_translation_to_srt)
 
 client = OpenAI(
     base_url="https://ai.hackclub.com",
@@ -29,6 +32,12 @@ def translate_with_openai(
     inputs_data,
     target_lang="en",
     singing_model="openai/gpt-oss-120b",
+    export_srt=False,
+    srt_text_field="translated_text",
+    srt_include_speaker=True,
+    srt_include_original=False,
+    srt_title=None,
+    export_srt_directory=None,
 ) -> dict:
     transcript = inputs_data["transcribe"]
     print(len(transcript["segments"]))
@@ -145,5 +154,83 @@ def translate_with_openai(
         "target_lang": target_lang,
         "full_text": full_text,
     }
+
+    # Export SRT files if requested
+    if export_srt:
+        try:
+            srt_files = []
+            translated_srt_filename = None
+            original_srt_filename = None
+
+            # Export translated subtitles
+            if srt_text_field in ["translated_text", "original_text"]:
+                translated_srt_filename = create_srt_filename("translated", target_lang)
+
+                # Use custom directory if provided, otherwise use tmp_path
+                if export_srt_directory:
+                    translated_srt_path = os.path.join(export_srt_directory, translated_srt_filename)
+                else:
+                    translated_srt_path = os.path.join(tmp_path, translated_srt_filename)
+
+                export_translation_to_srt(
+                    translation_data=stage_data,
+                    output_path=translated_srt_path,
+                    text_field=srt_text_field,
+                    include_speaker=srt_include_speaker,
+                    include_original=srt_include_original,
+                    title=srt_title,
+                    export_srt_directory=export_srt_directory
+                )
+
+                # Add translated SRT file path to stage data (relative to tmp_path for compatibility)
+                if export_srt_directory:
+                    stage_data["translated_srt_file"] = translated_srt_filename
+                else:
+                    stage_data["translated_srt_file"] = translated_srt_filename
+                srt_files.append(translated_srt_path)
+                print(f"✅ Exported translated SRT file: {translated_srt_path}")
+
+            # Export original transcription subtitles
+            original_srt_filename = create_srt_filename("original", target_lang)
+
+            # Use custom directory if provided, otherwise use tmp_path
+            if export_srt_directory:
+                original_srt_path = os.path.join(export_srt_directory, original_srt_filename)
+            else:
+                original_srt_path = os.path.join(tmp_path, original_srt_filename)
+
+            # Get original transcription data from inputs
+            original_segments = []
+            if "transcribe" in inputs_data and inputs_data["transcribe"].get("segments"):
+                original_segments = inputs_data["transcribe"]["segments"]
+
+            if original_segments:
+                export_transcription_to_srt(
+                    transcription_data={"segments": original_segments},
+                    output_path=original_srt_path,
+                    include_speaker=srt_include_speaker,
+                    title=srt_title,
+                    export_srt_directory=export_srt_directory
+                )
+
+                # Add original SRT file path to stage data (relative to tmp_path for compatibility)
+                if export_srt_directory:
+                    stage_data["original_srt_file"] = original_srt_filename
+                else:
+                    stage_data["original_srt_file"] = original_srt_filename
+                srt_files.append(original_srt_path)
+                print(f"✅ Exported original SRT file: {original_srt_path}")
+
+            # Keep backward compatibility by setting srt_file to translated file
+            if translated_srt_filename:
+                stage_data["srt_file"] = translated_srt_filename
+            elif original_srt_filename:
+                stage_data["srt_file"] = original_srt_filename
+
+            print(f"✅ Total SRT files exported: {len(srt_files)}")
+
+        except Exception as e:
+            logging.warning(f"SRT export failed: {e}")
+            stage_data["errors"].append(f"SRT export error: {str(e)}")
 
     return stage_data
