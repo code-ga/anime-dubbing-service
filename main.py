@@ -235,10 +235,12 @@ def main():
                             input_file=input_abs,
                             output_file=os.path.abspath(args.output_mp4),
                         )
-                    else:
+                    elif stage == "mix_audio":
+                        stage_data = func(tmp_path, metadata_path, inputs_data)
+                    elif stage == "generate_tts":
                         stage_data = func(tmp_path, metadata_path, inputs_data, tts_method=args.tts_method)
-
-                    print(stage_data)
+                    else:
+                        stage_data = func(tmp_path, metadata_path, inputs_data)
 
                     # Update success with stage_data
                     update_success(

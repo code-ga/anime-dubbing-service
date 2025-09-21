@@ -5,3 +5,5 @@ transformers
 openai
 pyyaml
 edge-tts
+pydub
+librosa

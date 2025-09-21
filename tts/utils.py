@@ -1,4 +1,5 @@
 import torch
+import torchaudio
 
 
 def adjust_audio_duration(
@@ -22,14 +23,10 @@ def adjust_audio_duration(
     #     # Audio already matches target duration
     #     return waveform
     # elif current_samples > target_samples:
-    #     # Audio is too long - speed it up to fit
-    #     speed_factor = current_samples / target_samples
-    #     # Use torchaudio's speed adjustment
-    #     adjusted_waveform, _ = torchaudio.functional.speed(
-    #         waveform, orig_freq=sample_rate, factor=speed_factor
-    #     )
+    #     # Audio is too long - trim to fit
+    #     adjusted_waveform = waveform[:, :target_samples]
 
-    #     # Clean up original waveform after speed adjustment
+    #     # Clean up original waveform after trimming
     #     del waveform
     #     if torch.cuda.is_available():
     #         torch.cuda.empty_cache()
@@ -46,4 +43,5 @@ def adjust_audio_duration(
     #         torch.cuda.empty_cache()
 
     #     return padded_waveform
+
     return waveform

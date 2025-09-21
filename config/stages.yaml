@@ -39,7 +39,7 @@ stages:
   - name: mix_audio
     module: dub.mixer
     function: mix_audio
-    inputs: [generate_tts, separate_audio]
+    inputs: [generate_tts, separate_audio, transcribe]
     outputs: json
   - name: mux_video
     module: main

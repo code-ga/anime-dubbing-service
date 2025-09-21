@@ -19,7 +19,9 @@ from utils.logger import get_logger
 # Adjust these values based on your system's memory capacity:
 # - Lower values use less memory but may be slower
 # - Higher values are faster but require more memory
-TTS_SPEAKER_BATCH_SIZE = 1  # Number of speakers to process at once for memory management
+TTS_SPEAKER_BATCH_SIZE = (
+    1  # Number of speakers to process at once for memory management
+)
 
 
 def cleanup_memory():
@@ -41,8 +43,10 @@ def log_memory_usage(stage_name: str):
     """
     if torch.cuda.is_available():
         allocated = torch.cuda.memory_allocated() / 1024**3  # GB
-        reserved = torch.cuda.memory_reserved() / 1024**3    # GB
-        logging.info(f"[{stage_name}] GPU Memory - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB")
+        reserved = torch.cuda.memory_reserved() / 1024**3  # GB
+        logging.info(
+            f"[{stage_name}] GPU Memory - Allocated: {allocated:.2f}GB, Reserved: {reserved:.2f}GB"
+        )
 
 
 def transcribe_reference_audio(audio_path: str, language: str = "ja") -> str:
@@ -79,7 +83,9 @@ def transcribe_reference_audio(audio_path: str, language: str = "ja") -> str:
         return ""
 
 
-def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="edge-tts", **kwargs) -> dict:
+def generate_dubbed_segments(
+    tmp_path, metadata_path, inputs_data, tts_method="edge-tts", **kwargs
+) -> dict:
     """
     Generate dubbed audio segments from the translated JSON file, skipping singing segments and those with empty translated text.
 
@@ -146,7 +152,6 @@ def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="e
     rvc_models_used = {}
     model = None
     vocos = None
-    print(tts_method)
     if tts_method == "edge-tts":
         # For edge-tts, we don't need F5-TTS models or RVC models
         # Voice selection is handled by edge-tts voice mapping
@@ -210,14 +215,12 @@ def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="e
 
         # Log reference audio information
         ref_audio = ref_audios_by_speaker.get(speaker, default_ref)
-        logger.logger.debug(f"  🎧 Using reference audio: {os.path.basename(ref_audio)}")
         if ref_text:
-            logger.logger.debug(f"  📝 Using reference text: '{ref_text[:50]}{'...' if len(ref_text) > 50 else ''}'")
+            pass
 
         try:
             if tts_method == "edge-tts":
                 # Use edge-tts implementation
-                logger.logger.debug(f"  🔄 Processing {len(segments)} segments with edge-tts")
                 speaker_tts_segments = generate_tts_for_speaker_edge(
                     segments,
                     speaker,
@@ -232,7 +235,6 @@ def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="e
                 # Use F5-TTS implementation - model and vocos are guaranteed to be initialized in the else branch
                 assert model is not None, "F5-TTS model should be initialized"
                 assert vocos is not None, "Vocos model should be initialized"
-                logger.logger.debug(f"  🔄 Processing {len(segments)} segments with F5-TTS")
                 speaker_tts_segments = generate_tts_for_speaker(
                     segments,
                     speaker,
@@ -247,7 +249,9 @@ def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="e
             tts_segments.extend(speaker_tts_segments)
 
             # Log successful speaker processing
-            logger.logger.info(f"  ✅ Speaker {speaker} completed: {len(speaker_tts_segments)} segments generated")
+            logger.logger.info(
+                f"  ✅ Speaker {speaker} completed: {len(speaker_tts_segments)} segments generated"
+            )
 
         except Exception as e:
             logger.log_error("tts_generation", e, f"speaker {speaker}")
@@ -257,7 +261,6 @@ def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="e
         # Clean up after each speaker and periodically clear GPU cache
         processed_speakers += 1
         if processed_speakers % 3 == 0:  # Clear cache every 3 speakers
-            logger.logger.debug("  🧹 Clearing GPU cache after speaker batch")
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -272,6 +275,7 @@ def generate_dubbed_segments(tmp_path, metadata_path, inputs_data, tts_method="e
         torch.cuda.empty_cache()
 
     total_duration = sum(seg["end"] - seg["start"] for seg in tts_segments)
+    tts_segments = sorted(tts_segments, key=lambda seg: seg["start"])
 
     stage_data = {
         "stage": "generate_tts",
@@ -322,17 +326,23 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
         seg.get("speaker") for seg in transcribe_data["segments"] if seg.get("speaker")
     )
 
-    logger.logger.info(f"👥 Found {len(speakers)} speakers: {', '.join(sorted(speakers))}")
+    logger.logger.info(
+        f"👥 Found {len(speakers)} speakers: {', '.join(sorted(speakers))}"
+    )
 
     # Process speakers in batches to manage memory usage
     speaker_list = list(speakers)
 
     for i in range(0, len(speaker_list), TTS_SPEAKER_BATCH_SIZE):
-        batch_speakers = speaker_list[i:i + TTS_SPEAKER_BATCH_SIZE]
-        logger.logger.info(f"🔄 Processing batch {i//TTS_SPEAKER_BATCH_SIZE + 1}: {len(batch_speakers)} speakers")
+        batch_speakers = speaker_list[i : i + TTS_SPEAKER_BATCH_SIZE]
+        logger.logger.info(
+            f"🔄 Processing batch {i//TTS_SPEAKER_BATCH_SIZE + 1}: {len(batch_speakers)} speakers"
+        )
 
         for speaker_idx, speaker in enumerate(batch_speakers):
-            logger.logger.info(f"  👤 Processing speaker {speaker} ({speaker_idx + 1}/{len(batch_speakers)})")
+            logger.logger.info(
+                f"  👤 Processing speaker {speaker} ({speaker_idx + 1}/{len(batch_speakers)})"
+            )
 
             non_singing_segs = [
                 seg
@@ -343,7 +353,6 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
             ]
 
             if non_singing_segs:
-                logger.logger.debug(f"    📏 Found {len(non_singing_segs)} non-singing segments")
                 non_singing_segs.sort(key=lambda x: x["start"])
 
                 slices = []
@@ -358,7 +367,6 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                     total_duration += end - start
 
                 if slices:
-                    logger.logger.debug(f"    🔗 Concatenating {len(slices)} segments ({total_duration:.2f}s total)")
                     concatenated = torch.cat(slices, dim=1)
                     ref_path = os.path.join(refs_dir, f"{speaker}_long.wav")
                     torchaudio.save(ref_path, concatenated, sr)
@@ -368,9 +376,8 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                     del concatenated
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-
+    
                     # Transcribe the reference audio to get ref_text
-                    logger.logger.debug(f"    🎙️  Transcribing reference audio for {speaker}")
                     ref_text = transcribe_reference_audio(
                         ref_path, transcribe_data.get("language", "ja")
                     )
@@ -381,13 +388,19 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                         "ref_text": ref_text,
                     }
 
-                    logger.logger.info(f"    ✅ Reference created for {speaker}: {total_duration:.2f}s")
+                    logger.logger.info(
+                        f"    ✅ Reference created for {speaker}: {total_duration:.2f}s"
+                    )
                     if ref_text:
-                        logger.logger.debug(f"       📝 Reference text: '{ref_text[:50]}{'...' if len(ref_text) > 50 else ''}'")
+                        pass
                 else:
-                    logger.logger.warning(f"    ⚠️  No valid segments found for speaker {speaker}")
+                    logger.logger.warning(
+                        f"    ⚠️  No valid segments found for speaker {speaker}"
+                    )
             else:
-                logger.logger.warning(f"    ⚠️  No non-singing segments found for speaker {speaker}")
+                logger.logger.warning(
+                    f"    ⚠️  No non-singing segments found for speaker {speaker}"
+                )
 
         # Clear GPU cache after each batch
         if torch.cuda.is_available():
@@ -408,22 +421,24 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
         shutil.copy(source_path, default_ref_path)
 
         # Transcribe the default reference audio
-        logger.logger.debug("  🎙️  Transcribing default reference audio")
         default_ref_text = transcribe_reference_audio(
             default_ref_path, transcribe_data.get("language", "ja")
         )
         default_ref = {"audio_path": "refs/default.wav", "ref_text": default_ref_text}
 
-        logger.logger.info(f"  ✅ Default reference created from speaker {first_speaker}")
+        logger.logger.info(
+            f"  ✅ Default reference created from speaker {first_speaker}"
+        )
     else:
-        logger.logger.info("⚠️  No speaker-specific references found, creating fallback default reference")
+        logger.logger.info(
+            "⚠️  No speaker-specific references found, creating fallback default reference"
+        )
         all_non_singing_segs = [
             seg
             for seg in transcribe_data["segments"]
             if not seg.get("is_singing", False) and seg.get("no_speech_prob", 1.0) < 0.5
         ]
         if all_non_singing_segs:
-            logger.logger.debug(f"  📏 Found {len(all_non_singing_segs)} segments for fallback reference")
             all_non_singing_segs.sort(key=lambda x: x["start"])
             slices = []
             for seg in all_non_singing_segs:
@@ -443,9 +458,8 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                 del concatenated
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-
+    
                 # Transcribe the default reference audio
-                logger.logger.debug("  🎙️  Transcribing fallback default reference audio")
                 default_ref_text = transcribe_reference_audio(
                     default_ref_path, transcribe_data.get("language", "ja")
                 )
