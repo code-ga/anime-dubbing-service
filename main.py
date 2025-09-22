@@ -7,17 +7,9 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
-import traceback
 
 import yaml
 from dotenv import load_dotenv
-
-from convert.mp4_wav import convert_mp4_to_wav
-from convert.separate_audio import separate
-from dub.mixer import mix_audio
-from transcription.whisper import transcript
-from translate.openAi import translate_with_openai
-from tts.orchestrator import generate_dubbed_segments
 from utils.logger import get_logger
 from utils.metadata import (create_metadata, is_complete, load_metadata,
                             load_previous_result, set_overall_error,
@@ -376,12 +368,59 @@ def save_final_results(tmp_path, metadata_path, output_file):
     # Copy SRT files if they exist
     translate_data = stage_results.get("translate", {})
     if translate_data:
-        # Check for SRT file in stage data
-        srt_filename = translate_data.get("stage_data", {}).get("srt_file")
-        if srt_filename:
-            srt_path = os.path.join(tmp_path, srt_filename)
-            if os.path.exists(srt_path):
-                shutil.copy(srt_path, os.path.join(results_dir, srt_filename))
+        # Get stage data from the translate stage results
+        stage_data = translate_data.get("stage_data", {})
+
+        # Determine possible SRT file locations
+        # SRT files could be in tmp_path or in a custom export_srt_directory
+        possible_dirs = [tmp_path]
+
+        # If export_srt_directory was used, add it to possible directories
+        export_srt_dir = stage_data.get("export_srt_directory")
+        if export_srt_dir:
+            possible_dirs.append(export_srt_dir)
+
+        # Copy translated SRT file if it exists
+        translated_srt_filename = stage_data.get("translated_srt_file")
+        if translated_srt_filename:
+            copied = False
+            for search_dir in possible_dirs:
+                translated_srt_path = os.path.join(search_dir, translated_srt_filename)
+                if os.path.exists(translated_srt_path):
+                    shutil.copy(translated_srt_path, os.path.join(results_dir, translated_srt_filename))
+                    print(f"✅ Copied translated SRT file: {translated_srt_filename}")
+                    copied = True
+                    break
+            if not copied:
+                print(f"⚠️  Translated SRT file not found: {translated_srt_filename}")
+
+        # Copy original SRT file if it exists
+        original_srt_filename = stage_data.get("original_srt_file")
+        if original_srt_filename:
+            copied = False
+            for search_dir in possible_dirs:
+                original_srt_path = os.path.join(search_dir, original_srt_filename)
+                if os.path.exists(original_srt_path):
+                    shutil.copy(original_srt_path, os.path.join(results_dir, original_srt_filename))
+                    print(f"✅ Copied original SRT file: {original_srt_filename}")
+                    copied = True
+                    break
+            if not copied:
+                print(f"⚠️  Original SRT file not found: {original_srt_filename}")
+
+        # Backward compatibility: copy single SRT file if it exists
+        srt_filename = stage_data.get("srt_file")
+        if srt_filename and not translated_srt_filename and not original_srt_filename:
+            copied = False
+            for search_dir in possible_dirs:
+                srt_path = os.path.join(search_dir, srt_filename)
+                if os.path.exists(srt_path):
+                    shutil.copy(srt_path, os.path.join(results_dir, srt_filename))
+                    print(f"✅ Copied SRT file: {srt_filename}")
+                    copied = True
+                    break
+            if not copied:
+                print(f"⚠️  SRT file not found: {srt_filename}")
 
     # Extract and save diarization embeddings
     transcribe_path = stage_results.get("transcribe", {}).get("json_path")

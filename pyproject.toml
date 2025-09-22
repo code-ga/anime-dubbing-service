@@ -20,6 +20,7 @@ dependencies = [
     "torch>=2.8.0",
     "torchaudio>=2.8.0",
     "torchvision>=0.23.0",
+    # Base installation uses CPU versions for maximum compatibility
     "transformers>=4.56.0",
     "vocos>=0.1.0",
 ]
@@ -27,12 +28,15 @@ dependencies = [
 [project.optional-dependencies]
 gpu = [
     "audio-separator[gpu]>=0.36.1",
+    # GPU extras use CUDA versions for maximum performance
 ]
 cpu = [
     "audio-separator[cpu]>=0.36.1",
+    # CPU extras ensure CPU-only versions
 ]
 
 [tool.uv.sources]
+# Base installation uses CPU versions for maximum compatibility
 torch = [
   { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
@@ -42,6 +46,7 @@ torchvision = [
 torchaudio = [
   { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"

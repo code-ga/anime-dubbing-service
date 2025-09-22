@@ -224,7 +224,6 @@ Create a `.env` file for configuration:
 
 ```bash
 # Required
-OPENAI_API_KEY=your_key_here
 HUGGINGFACE_TOKEN=your_token_here
 
 # Optional
@@ -651,11 +650,12 @@ uv pip install -e .[cpu,gpu]
 pip install -r requirements-cpu.txt  # CPU version
 pip install -r requirements-gpu.txt  # GPU version (requires NVIDIA GPU)
 ```
-
+And then install pytorch following this link https://pytorch.org/get-started/locally/
 ### Installation Tips
 
 - **First-time setup**: Run `uv pip install -e .` - this works on 99% of computers
-- **GPU users**: Add `[gpu]` for 2-3x faster processing if you have NVIDIA GPU
+- **GPU users**: Add `[gpu]` for 2-3x faster audio processing if you have NVIDIA GPU
+- **PyTorch Note**: Base installation uses CPU PyTorch; GPU PyTorch may already be installed in some environments
 - **uv vs pip**: `uv` is faster and recommended, but regular `pip` works too
 - **Apple Silicon**: Use CPU installation - GPU support requires additional setup
 
@@ -692,6 +692,9 @@ A: Ensure you have 3-5 seconds of clear speech per character. The system automat
 
 **Q: Can I add custom voices or languages?**
 A: Yes! You can modify `config/tts_config.yaml` to add new Edge-TTS voices or configure F5-TTS for additional languages.
+
+**Q: Why does PyTorch show CUDA version even with CPU installation?**
+A: PyTorch CUDA/CPU versions are often pre-installed in development environments. The base installation uses CPU audio-separator and works on any computer. For GPU acceleration, use `uv pip install -e .[gpu]` which includes GPU audio-separator for 2-3x faster processing.
 
 ### Troubleshooting Questions
 
@@ -773,13 +776,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 # Quick setup (CPU - works on any computer)
 git clone <repo> && cd anime-dubbing-service
 uv pip install -e .
-echo "OPENAI_API_KEY=your_key" > .env
 echo "HUGGINGFACE_TOKEN=your_token" >> .env
 
 # GPU setup (if you have NVIDIA GPU)
 git clone <repo> && cd anime-dubbing-service
 uv pip install -e .[gpu]
-echo "OPENAI_API_KEY=your_key" > .env
 echo "HUGGINGFACE_TOKEN=your_token" >> .env
 ```
 
