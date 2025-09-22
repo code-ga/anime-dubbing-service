@@ -1,0 +1,9 @@
+ffmpeg-python
+audio-separator[cpu]
+python-dotenv
+transformers
+openai
+pyyaml
+edge-tts
+pydub
+librosa

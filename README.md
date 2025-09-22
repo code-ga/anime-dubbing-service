@@ -42,9 +42,10 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python 3.8+**
+- **Python 3.12+**
 - **FFmpeg** (for audio/video processing)
-- **GPU recommended** (NVIDIA with CUDA for best performance)
+- **uv** (Python package manager - `pip install uv`)
+- **Hardware**: Works on any computer (CPU or GPU)
 
 ### Installation
 
@@ -55,13 +56,16 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
    ```
 
 2. **Install dependencies**
-   ```bash
-   # For CPU-only processing
-   pip install -r requirements.txt
+    ```bash
+    # For CPU-only processing (default - works on any computer)
+    uv pip install -e .
 
-   # For GPU-accelerated processing (recommended)
-   pip install -r requirements-gpu.txt
-   ```
+    # For GPU-accelerated processing (NVIDIA GPU with CUDA required)
+    uv pip install -e .[gpu]
+
+    # Alternative: Install specific extras
+    uv pip install -e .[cpu]  # Explicitly install CPU version
+    ```
 
 3. **Set up environment variables**
    Create a `.env` file in the project root:
@@ -88,12 +92,12 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 
 ### Hardware Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| **CPU** | 4 cores | 8+ cores |
-| **RAM** | 8GB | 16GB+ |
-| **GPU** | N/A | NVIDIA RTX 3060+ |
-| **Storage** | 10GB free | 50GB+ SSD |
+| Component | Minimum | Recommended | Notes |
+|-----------|---------|-------------|--------|
+| **CPU** | 4 cores | 8+ cores | Works on any CPU |
+| **RAM** | 8GB | 16GB+ | More RAM = faster processing |
+| **GPU** | N/A | NVIDIA RTX 3060+ | Optional: 2-3x faster processing |
+| **Storage** | 10GB free | 50GB+ SSD | SSD recommended for speed |
 
 ### Supported Languages
 
@@ -628,15 +632,32 @@ pytest tests/test_music_dubbing.py
 ### Installation Commands
 
 ```bash
-# Basic installation
-pip install openai whisper pyannote.audio torchaudio edge-tts pyyaml python-dotenv
+# 🚀 Quick installation (CPU - works on any computer)
+uv pip install -e .
 
-# GPU-accelerated installation
-pip install -r requirements-gpu.txt
+# 🖥️ CPU installation with explicit CPU audio separator
+uv pip install -e .[cpu]
 
-# Development installation
+# 🚀 GPU installation (requires NVIDIA GPU with CUDA)
+uv pip install -e .[gpu]
+
+# 📦 Traditional pip installation (if you prefer pip over uv)
 pip install -e .
+
+# 🔧 Development installation with all optional dependencies
+uv pip install -e .[cpu,gpu]
+
+# 📋 Legacy requirements-based installation
+pip install -r requirements-cpu.txt  # CPU version
+pip install -r requirements-gpu.txt  # GPU version (requires NVIDIA GPU)
 ```
+
+### Installation Tips
+
+- **First-time setup**: Run `uv pip install -e .` - this works on 99% of computers
+- **GPU users**: Add `[gpu]` for 2-3x faster processing if you have NVIDIA GPU
+- **uv vs pip**: `uv` is faster and recommended, but regular `pip` works too
+- **Apple Silicon**: Use CPU installation - GPU support requires additional setup
 
 ### Model Requirements
 
@@ -664,7 +685,7 @@ A: Any format supported by FFmpeg (MP4, MKV, AVI, MOV, etc.). The tool extracts 
 ### Technical Questions
 
 **Q: Why is processing slow on my machine?**
-A: Try Edge-TTS instead of F5-TTS for faster processing. Also ensure you're using GPU acceleration and have sufficient RAM (16GB+ recommended).
+A: Processing is fastest with GPU, but CPU works on any computer. Try Edge-TTS for faster processing than F5-TTS. Ensure you have sufficient RAM (16GB+ recommended).
 
 **Q: How do I improve voice cloning quality?**
 A: Ensure you have 3-5 seconds of clear speech per character. The system automatically extracts the best reference segments, but cleaner source audio helps.
@@ -749,18 +770,28 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ### One-Command Setup
 ```bash
+# Quick setup (CPU - works on any computer)
 git clone <repo> && cd anime-dubbing-service
-pip install -r requirements-gpu.txt
+uv pip install -e .
+echo "OPENAI_API_KEY=your_key" > .env
+echo "HUGGINGFACE_TOKEN=your_token" >> .env
+
+# GPU setup (if you have NVIDIA GPU)
+git clone <repo> && cd anime-dubbing-service
+uv pip install -e .[gpu]
 echo "OPENAI_API_KEY=your_key" > .env
 echo "HUGGINGFACE_TOKEN=your_token" >> .env
 ```
 
 ### Most Common Commands
 ```bash
-# Quick test with Edge-TTS
+# Quick test (CPU - works immediately)
+python main.py input.mp4 output.mp4
+
+# Fast processing with Edge-TTS
 python main.py input.mp4 output.mp4 --tts-method edge_tts
 
-# High-quality dubbing with F5-TTS
+# High-quality dubbing with F5-TTS (GPU recommended)
 python main.py input.mp4 output.mp4 --tts-method f5
 
 # Custom language and settings
@@ -802,9 +833,10 @@ results/{timestamp}/
 - **Check**: Verify speaker diarization worked correctly in transcription logs
 
 #### Processing Errors
-- **Issue**: "CUDA out of memory" errors
+- **Issue**: "CUDA out of memory" errors (GPU users only)
 - **Solution**: Use CPU processing or reduce batch size in config
 - **Command**: `--tts-method edge_tts` (uses less memory than F5-TTS)
+- **Alternative**: Install with CPU-only extras: `uv pip install -e .[cpu]`
 
 #### Translation Issues
 - **Issue**: Poor translation quality
@@ -821,12 +853,15 @@ results/{timestamp}/
 
 #### Hardware Optimization
 ```bash
-# Use GPU acceleration (recommended)
+# GPU acceleration (2-3x faster if you have NVIDIA GPU)
 export CUDA_VISIBLE_DEVICES=0
 python main.py input.mp4 output.mp4 --tts-method f5
 
-# CPU processing (slower but more stable)
+# CPU processing (works on any computer)
 python main.py input.mp4 output.mp4 --tts-method edge_tts
+
+# Auto-detection (recommended - works with both CPU and GPU)
+python main.py input.mp4 output.mp4
 ```
 
 #### Configuration Tuning
@@ -839,10 +874,12 @@ performance:
 ```
 
 #### Processing Tips
-- **Start with Edge-TTS**: Faster processing, good for testing
-- **Use F5-TTS for production**: Better voice consistency
+- **Start with CPU**: Works immediately on any computer, good for testing
+- **Use GPU for speed**: 2-3x faster processing if you have NVIDIA GPU
+- **Edge-TTS**: Fastest option, works on both CPU and GPU
+- **F5-TTS**: Best quality but requires more resources
 - **Process in segments**: For very long videos (>45 minutes)
-- **Monitor GPU memory**: Keep 2GB free for best performance
+- **Monitor resources**: Keep 2GB RAM free for best performance
 
 ### Debug Mode
 

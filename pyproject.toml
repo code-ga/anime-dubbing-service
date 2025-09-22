@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "audio-separator[gpu]>=0.36.1",
+    "audio-separator[cpu]>=0.36.1",
     "ctranslate2==4.4.0",
     "edge-tts>=7.2.3",
     "f5-tts>=1.1.9",
@@ -23,17 +23,29 @@ dependencies = [
     "transformers>=4.56.0",
     "vocos>=0.1.0",
 ]
+
+[project.optional-dependencies]
+gpu = [
+    "audio-separator[gpu]>=0.36.1",
+]
+cpu = [
+    "audio-separator[cpu]>=0.36.1",
+]
+
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchaudio = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 [[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
+
+[tool.setuptools.packages.find]
+include = ["anime_dubbing_service*"]
