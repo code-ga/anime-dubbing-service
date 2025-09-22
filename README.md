@@ -32,8 +32,8 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 - **🗂️ Structured Output**: Organized results with metadata, transcripts, and quality reports
 
 ### 🎪 Advanced Features
-- **🎼 Singing Detection**: Automatic detection of singing segments for appropriate handling
-- **😊 Emotion Detection**: Optional emotion analysis for more expressive dubbing (configurable)
+- **🎼 Singing Detection**: Automatic detection of singing segments for appropriate handling (unavailable now)
+- **😊 Emotion Detection**: Optional emotion analysis for more expressive dubbing (unavailable now)
 - **🎛️ Audio Mixing**: Professional audio mixing with crossfades and volume normalization
 - **📹 Video Processing**: Seamless video muxing without quality loss
 - **📝 Dual SRT Export**: Export both translated and original transcription subtitles in SRT format with customizable options (speakers, original text, translations)
@@ -67,13 +67,13 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
    Create a `.env` file in the project root:
    ```bash
    # Required: OpenAI API key for translation
-   OPENAI_API_KEY=your_openai_api_key_here
+   OPENAI_API_KEY=anything # We use ai from hackclub
 
    # Required: Hugging Face token for Pyannote models
    HUGGINGFACE_TOKEN=your_huggingface_token_here
 
    # Optional: Custom temporary directory
-   TMP_DIR=./tmp
+   TMP_DIR=./tmp # specify with argument
    ```
 
 4. **Verify FFmpeg installation**
@@ -118,7 +118,7 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 
 The service supports two powerful TTS engines, each with unique advantages:
 
-#### 🎯 F5-TTS (Voice Cloning)
+#### 🎯 F5-TTS (Voice Cloning) (Unavailable now)
 - **Best for**: Character consistency, professional dubbing
 - **Features**: Advanced voice cloning, speaker diarization integration
 - **Languages**: 7 major languages with native support
@@ -146,7 +146,7 @@ stages:
 #### 2. TTS Settings (`config/tts_config.yaml`)
 ```yaml
 # Default TTS method
-default_tts_method: "edge_tts"
+default_tts_method: "edge_tts" #Don't change because currently f5-tts is unavailable
 
 # F5-TTS Configuration
 f5:
@@ -275,7 +275,7 @@ python main.py anime.mp4 dubbed.mp4 --tts-method edge_tts --target_lang en
 python main.py input.mp4 output.mp4 --tts-method edge_tts --target_lang es
 ```
 
-#### F5-TTS (For voice cloning)
+#### F5-TTS (For voice cloning) (Unstable)
 ```bash
 # Character voice consistency
 python main.py anime.mp4 dubbed.mp4 --tts-method f5 --target_lang en

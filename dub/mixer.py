@@ -1,8 +1,55 @@
-import json
 import os
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Union
 from datetime import datetime
 from pydub import AudioSegment
+from pydub.silence import detect_nonsilent
+from pydub.effects import speedup
+
+
+def remove_trailing_silence(
+    audio_segment: AudioSegment,
+    silence_thresh: float = -40.0,
+    min_silence_len: int = 100,
+) -> AudioSegment:
+    """
+    Remove silence from the end of an audio segment while preserving the original content.
+
+    Args:
+        audio_segment: The audio segment to process
+        silence_thresh: Silence threshold in dBFS (default: -40.0, good for anime dubbing)
+        min_silence_len: Minimum silence length in milliseconds to consider for removal (default: 100ms)
+
+    Returns:
+        AudioSegment with trailing silence removed
+    """
+    if len(audio_segment) == 0:
+        return audio_segment
+
+    # Detect non-silent chunks from the end
+    non_silent_chunks = detect_nonsilent(
+        audio_segment,
+        min_silence_len=min_silence_len,
+        silence_thresh=int(silence_thresh),
+    )
+
+    if not non_silent_chunks:
+        # If no non-silent chunks found, return empty audio
+        return AudioSegment.silent(duration=0)
+
+    # Find the last non-silent chunk
+    last_non_silent_end = int(non_silent_chunks[-1][1])
+
+    # If the last non-silent chunk doesn't go to the end, there's trailing silence
+    if last_non_silent_end < len(audio_segment):
+        # Remove silence from the end - slice up to the last non-silent chunk end
+        # Use explicit type casting to resolve type checker issues
+        from typing import cast
+
+        result = cast(AudioSegment, audio_segment[:last_non_silent_end])
+        return result
+
+    # No trailing silence found, return original
+    return audio_segment
 
 
 def mix_audio(
@@ -59,10 +106,12 @@ def mix_audio(
     for seg in all_vocal_segments:
         start_ms = int(seg["start"] * 1000)
         duration_ms = int((seg["end"] - seg["start"]) * 1000)
-
         if not seg.get("is_singing", False):  # Speech TTS
+            print("Mixing speech segment:", seg["path"], start_ms, duration_ms)
             # Load TTS audio, resample to original SR, handle channels, trim/pad to exact duration
             seg_audio = AudioSegment.from_wav(os.path.join(tmp_path, seg["path"]))
+            # Remove trailing silence to prevent oversized audio segments
+            seg_audio = remove_trailing_silence(seg_audio)
 
             # Resample if TTS SR differs from original (F5-TTS is 22050 Hz, original may be 44100 Hz)
             if seg_audio.frame_rate != sr:
@@ -75,9 +124,19 @@ def mix_audio(
             # Speed up or pad to match exact segment duration
             if len(seg_audio) > duration_ms:
                 # Calculate speed factor to fit the target duration
-                speed_factor = duration_ms / len(seg_audio)
-                # Apply speed change (pydub speedup method)
-                seg_audio = seg_audio.speedup(playback_speed=speed_factor)
+                if duration_ms <= 0:
+                    seg_audio = AudioSegment.silent(duration=duration_ms)
+                elif len(seg_audio) == 0:
+                    seg_audio = AudioSegment.silent(duration=duration_ms)
+                else:
+                    speed_factor = len(seg_audio) / duration_ms
+                    if (
+                        speed_factor <= 0 or speed_factor > 10
+                    ):  # Cap extreme speeds to avoid artifacts
+                        seg_audio = AudioSegment.silent(duration=duration_ms)
+                    else:
+                        # Apply speed change (pydub speedup method)
+                        seg_audio = speedup(seg_audio, playback_speed=speed_factor)
             else:
                 pad_ms = duration_ms - len(seg_audio)
                 silence_segment = AudioSegment.silent(duration=pad_ms)

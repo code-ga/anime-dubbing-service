@@ -2,7 +2,6 @@ import ffmpeg
 import os
 import torchaudio
 from datetime import datetime
-from utils.metadata import save_stage_result
 
 
 def convert_mp4_to_wav(

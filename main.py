@@ -7,8 +7,8 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
+import traceback
 
-# import torchaudio
 import yaml
 from dotenv import load_dotenv
 

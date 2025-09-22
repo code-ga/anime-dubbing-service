@@ -2,8 +2,8 @@ import logging
 import sys
 import time
 from datetime import datetime
+import traceback
 from typing import Optional, Dict, Any
-import os
 
 
 class PipelineLogger:
@@ -55,7 +55,9 @@ class PipelineLogger:
         self.logger.info(f"📁 Input file: {input_file}")
         self.logger.info(f"📁 Output file: {output_file}")
         self.logger.info(f"📊 Total stages: {total_stages}")
-        self.logger.info(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        self.logger.info(
+            f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        )
         self.logger.info("=" * 60)
 
     def log_stage_start(self, stage_name: str, stage_index: int, total_stages: int):
@@ -63,30 +65,50 @@ class PipelineLogger:
         self.stage_start_times[stage_name] = time.time()
         progress = (stage_index / total_stages) * 100
 
-        self.logger.info(f"🔄 STAGE {stage_index + 1}/{total_stages} - {stage_name.upper()}")
+        self.logger.info(
+            f"🔄 STAGE {stage_index + 1}/{total_stages} - {stage_name.upper()}"
+        )
         self.logger.info(f"📈 Overall Progress: {progress:.1f}%")
         self.logger.info("-" * 60)
 
-    def log_stage_progress(self, stage_name: str, current: int, total: int, item_type: str = "items"):
+    def log_stage_progress(
+        self, stage_name: str, current: int, total: int, item_type: str = "items"
+    ):
         """Log progress within a stage."""
         if total > 0:
             progress = (current / total) * 100
-            self.logger.info(f"  ⏳ Processing {item_type}: {current}/{total} ({progress:.1f}%)")
+            self.logger.info(
+                f"  ⏳ Processing {item_type}: {current}/{total} ({progress:.1f}%)"
+            )
 
-    def log_stage_completion(self, stage_name: str, stage_index: int, total_stages: int, duration: Optional[float] = None):
+    def log_stage_completion(
+        self,
+        stage_name: str,
+        stage_index: int,
+        total_stages: int,
+        duration: Optional[float] = None,
+    ):
         """Log the completion of a specific stage."""
         if duration is None and stage_name in self.stage_start_times:
             duration = time.time() - self.stage_start_times[stage_name]
 
         progress = ((stage_index + 1) / total_stages) * 100
 
-        self.logger.info(f"✅ STAGE {stage_index + 1}/{total_stages} COMPLETED - {stage_name.upper()}")
+        self.logger.info(
+            f"✅ STAGE {stage_index + 1}/{total_stages} COMPLETED - {stage_name.upper()}"
+        )
         if duration:
             self.logger.info(f"  ⏱️  Duration: {duration:.2f} seconds")
         self.logger.info(f"📈 Overall Progress: {progress:.1f}%")
         self.logger.info("-" * 60)
 
-    def log_segment_processing(self, stage_name: str, segment_index: int, total_segments: int, speaker: Optional[str] = None):
+    def log_segment_processing(
+        self,
+        stage_name: str,
+        segment_index: int,
+        total_segments: int,
+        speaker: Optional[str] = None,
+    ):
         """Log individual segment processing."""
         if stage_name not in self.segment_counts:
             self.segment_counts[stage_name] = 0
@@ -94,23 +116,35 @@ class PipelineLogger:
         self.segment_counts[stage_name] += 1
 
         if speaker:
-            self.logger.debug(f"  🎯 Processing segment {segment_index + 1}/{total_segments} (Speaker: {speaker})")
+            self.logger.debug(
+                f"  🎯 Processing segment {segment_index + 1}/{total_segments} (Speaker: {speaker})"
+            )
         else:
-            self.logger.debug(f"  🎯 Processing segment {segment_index + 1}/{total_segments}")
+            self.logger.debug(
+                f"  🎯 Processing segment {segment_index + 1}/{total_segments}"
+            )
 
     def log_speaker_batch(self, speaker: str, segment_count: int):
         """Log speaker batch processing."""
-        self.logger.info(f"  👤 Processing {segment_count} segments for speaker: {speaker}")
+        self.logger.info(
+            f"  👤 Processing {segment_count} segments for speaker: {speaker}"
+        )
 
     def log_tts_method(self, method: str):
         """Log the selected TTS method."""
         self.logger.info(f"  🎤 Using TTS method: {method}")
 
-    def log_memory_usage(self, stage_name: str, allocated_gb: float, reserved_gb: float):
+    def log_memory_usage(
+        self, stage_name: str, allocated_gb: float, reserved_gb: float
+    ):
         """Log GPU memory usage."""
-        self.logger.debug(f"  💾 [{stage_name}] GPU Memory - Allocated: {allocated_gb:.2f}GB, Reserved: {reserved_gb:.2f}GB")
+        self.logger.debug(
+            f"  💾 [{stage_name}] GPU Memory - Allocated: {allocated_gb:.2f}GB, Reserved: {reserved_gb:.2f}GB"
+        )
 
-    def log_error(self, stage_name: str, error: Exception, context: Optional[str] = None):
+    def log_error(
+        self, stage_name: str, error: Exception, context: Optional[str] = None
+    ):
         """Log errors with context and recovery suggestions."""
         error_msg = f"❌ ERROR in {stage_name.upper()}"
         if context:
@@ -118,12 +152,18 @@ class PipelineLogger:
         error_msg += f": {str(error)}"
 
         self.logger.error(error_msg)
+        self.logger.error("-" * 60)
+        # log traceback
+        self.logger.error(f"  🔍 Traceback:")
+        self.logger.error(traceback.format_exc())
         self.logger.debug(f"  🔍 Error details: {type(error).__name__}: {str(error)}")
 
         # Add recovery suggestions based on error type and stage
         self._log_recovery_suggestions(stage_name, error, context)
 
-    def _log_recovery_suggestions(self, stage_name: str, error: Exception, context: Optional[str] = None):
+    def _log_recovery_suggestions(
+        self, stage_name: str, error: Exception, context: Optional[str] = None
+    ):
         """Log recovery suggestions based on error type and context."""
         suggestions = []
 
@@ -132,7 +172,9 @@ class PipelineLogger:
 
         if "permission" in error_str or "access" in error_str:
             suggestions.append("Check file/directory permissions")
-            suggestions.append("Ensure you have write access to the temporary directory")
+            suggestions.append(
+                "Ensure you have write access to the temporary directory"
+            )
 
         if "disk" in error_str or "space" in error_str:
             suggestions.append("Check available disk space")
@@ -150,9 +192,13 @@ class PipelineLogger:
 
         if "file not found" in error_str:
             suggestions.append("Verify input file paths")
-            suggestions.append("Check if required files exist in the temporary directory")
+            suggestions.append(
+                "Check if required files exist in the temporary directory"
+            )
 
-        if stage_name == "transcribe" and ("whisper" in error_str or "model" in error_str):
+        if stage_name == "transcribe" and (
+            "whisper" in error_str or "model" in error_str
+        ):
             suggestions.append("Ensure Whisper model is properly installed")
             suggestions.append("Check available disk space for model download")
 
@@ -160,7 +206,9 @@ class PipelineLogger:
             suggestions.append("Verify OpenAI API key is set correctly")
             suggestions.append("Check API quota and billing status")
 
-        if stage_name == "generate_tts" and ("tts" in error_str or "voice" in error_str):
+        if stage_name == "generate_tts" and (
+            "tts" in error_str or "voice" in error_str
+        ):
             suggestions.append("Check TTS method configuration")
             suggestions.append("Verify reference audio files are valid")
 
@@ -195,7 +243,9 @@ class PipelineLogger:
         else:
             self.logger.error("💥 PIPELINE FAILED!")
         self.logger.info(f"⏱️  Total duration: {total_duration:.2f} seconds")
-        self.logger.info(f"🏁 Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        self.logger.info(
+            f"🏁 Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        )
         self.logger.info("=" * 60)
 
     def log_file_operation(self, operation: str, file_path: str, success: bool = True):
@@ -205,11 +255,15 @@ class PipelineLogger:
         else:
             self.logger.warning(f"  ⚠️  Failed {operation}: {file_path}")
 
-    def log_api_call(self, api_name: str, success: bool = True, duration: Optional[float] = None):
+    def log_api_call(
+        self, api_name: str, success: bool = True, duration: Optional[float] = None
+    ):
         """Log API calls."""
         if success:
             if duration:
-                self.logger.debug(f"  🌐 API call to {api_name} completed in {duration:.2f}s")
+                self.logger.debug(
+                    f"  🌐 API call to {api_name} completed in {duration:.2f}s"
+                )
             else:
                 self.logger.debug(f"  🌐 API call to {api_name} completed")
         else:
@@ -227,7 +281,9 @@ class PipelineLogger:
     def end_timing(self, operation_name: str) -> float:
         """End timing an operation and return elapsed time."""
         if operation_name not in self.operation_times:
-            self.logger.warning(f"⚠️  No start time found for operation: {operation_name}")
+            self.logger.warning(
+                f"⚠️  No start time found for operation: {operation_name}"
+            )
             return 0.0
 
         elapsed = time.time() - self.operation_times[operation_name]
@@ -236,7 +292,9 @@ class PipelineLogger:
         self.logger.debug(f"⏱️  Completed {operation_name}: {elapsed:.2f}s")
         return elapsed
 
-    def log_performance_metric(self, category: str, metric_name: str, value: float, unit: str = ""):
+    def log_performance_metric(
+        self, category: str, metric_name: str, value: float, unit: str = ""
+    ):
         """Log a performance metric."""
         if category not in self.performance_metrics:
             self.performance_metrics[category] = {}
@@ -244,7 +302,9 @@ class PipelineLogger:
         self.performance_metrics[category][metric_name] = value
 
         unit_str = f" {unit}" if unit else ""
-        self.logger.debug(f"📊 Performance [{category}]: {metric_name} = {value:.2f}{unit_str}")
+        self.logger.debug(
+            f"📊 Performance [{category}]: {metric_name} = {value:.2f}{unit_str}"
+        )
 
     def get_performance_summary(self) -> Dict[str, Dict[str, float]]:
         """Get a summary of all performance metrics."""
@@ -267,20 +327,20 @@ class PipelineFormatter(logging.Formatter):
 
     # ANSI color codes
     COLORS = {
-        'DEBUG': '\033[36m',    # Cyan
-        'INFO': '\033[32m',     # Green
-        'WARNING': '\033[33m',  # Yellow
-        'ERROR': '\033[31m',    # Red
-        'CRITICAL': '\033[35m', # Magenta
-        'RESET': '\033[0m'      # Reset
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
+        "RESET": "\033[0m",  # Reset
     }
 
     def format(self, record):
         # Add timestamp
-        timestamp = datetime.fromtimestamp(record.created).strftime('%H:%M:%S')
+        timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
 
         # Color the level name
-        level_color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+        level_color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
         colored_level = f"{level_color}{record.levelname}{self.COLORS['RESET']}"
 
         # Format the message
@@ -323,7 +383,7 @@ def setup_console_logging(level: str = "INFO"):
     """
     logging.basicConfig(
         level=getattr(logging, level.upper()),
-        format='[%(asctime)s] %(levelname)s: %(message)s',
-        datefmt='%H:%M:%S',
-        handlers=[logging.StreamHandler(sys.stdout)]
+        format="[%(asctime)s] %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
+        handlers=[logging.StreamHandler(sys.stdout)],
     )

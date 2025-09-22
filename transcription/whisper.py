@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import torchaudio
 import whisper
-import json
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
 import torch

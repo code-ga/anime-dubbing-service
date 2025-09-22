@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import logging
@@ -6,6 +5,7 @@ import torch
 import torchaudio
 import whisper
 import gc
+import yaml
 from datetime import datetime
 from typing import List, Dict, Optional
 from vocos import Vocos
@@ -22,6 +22,27 @@ from utils.logger import get_logger
 TTS_SPEAKER_BATCH_SIZE = (
     1  # Number of speakers to process at once for memory management
 )
+
+
+
+def load_tts_config():
+    """
+    Load TTS configuration from config file.
+
+    Returns:
+        dict: TTS configuration dictionary
+    """
+    config_path = os.path.join(".", "config", "tts_config.yaml")
+    try:
+        with open(config_path, "r") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.warning(f"Failed to load TTS config from {config_path}: {e}. Using defaults.")
+        return {
+            "reference_audio": {
+                "min_duration_minutes": 1
+            }
+        }
 
 
 def cleanup_memory():
@@ -306,7 +327,12 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
     # Initialize logger
     logger = get_logger("tts-orchestrator")
 
+    # Load TTS configuration
+    tts_config = load_tts_config()
+    min_duration_minutes = tts_config.get("reference_audio", {}).get("min_duration_minutes", 1)
+
     logger.logger.info("🎯 Starting reference audio extraction")
+    logger.logger.info(f"📏 Using minimum reference duration: {min_duration_minutes} minute(s)")
 
     transcribe_data = load_previous_result(metadata_path, "transcribe")
     separate_data = inputs_data["separate_audio"]
@@ -357,6 +383,9 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
 
                 slices = []
                 total_duration = 0
+                min_duration_seconds = min_duration_minutes * 60  # Convert minutes to seconds
+
+                # Concatenate segments until we reach minimum duration
                 for seg in non_singing_segs:
                     start = seg["start"]
                     end = seg["end"]
@@ -365,6 +394,10 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                     slice_w = waveform[:, start_sample:end_sample]
                     slices.append(slice_w)
                     total_duration += end - start
+
+                    # Stop if we've reached the minimum duration
+                    if total_duration >= min_duration_seconds:
+                        break
 
                 if slices:
                     concatenated = torch.cat(slices, dim=1)
@@ -376,7 +409,7 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                     del concatenated
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-    
+
                     # Transcribe the reference audio to get ref_text
                     ref_text = transcribe_reference_audio(
                         ref_path, transcribe_data.get("language", "ja")
@@ -389,7 +422,7 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                     }
 
                     logger.logger.info(
-                        f"    ✅ Reference created for {speaker}: {total_duration:.2f}s"
+                        f"    ✅ Reference created for {speaker}: {total_duration:.2f}s (min: {min_duration_seconds:.0f}s)"
                     )
                     if ref_text:
                         pass
@@ -441,6 +474,10 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
         if all_non_singing_segs:
             all_non_singing_segs.sort(key=lambda x: x["start"])
             slices = []
+            total_duration = 0
+            min_duration_seconds = min_duration_minutes * 60  # Convert minutes to seconds
+
+            # Concatenate segments until we reach minimum duration
             for seg in all_non_singing_segs:
                 start = seg["start"]
                 end = seg["end"]
@@ -448,6 +485,12 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                 end_sample = int(end * sr)
                 slice_w = waveform[:, start_sample:end_sample]
                 slices.append(slice_w)
+                total_duration += end - start
+
+                # Stop if we've reached the minimum duration
+                if total_duration >= min_duration_seconds:
+                    break
+
             if slices:
                 concatenated = torch.cat(slices, dim=1)
                 default_ref_path = os.path.join(refs_dir, "default_long.wav")
@@ -458,7 +501,7 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                 del concatenated
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-    
+
                 # Transcribe the default reference audio
                 default_ref_text = transcribe_reference_audio(
                     default_ref_path, transcribe_data.get("language", "ja")
@@ -468,7 +511,7 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
                     "ref_text": default_ref_text,
                 }
 
-                logger.logger.info("  ✅ Fallback default reference created")
+                logger.logger.info(f"  ✅ Fallback default reference created: {total_duration:.2f}s (min: {min_duration_seconds:.0f}s)")
         else:
             logger.logger.warning("  ⚠️  No valid segments found for default reference")
 
@@ -483,7 +526,7 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
         "errors": [],
         "refs_by_speaker": refs_by_speaker,
         "default_ref": default_ref,
-        "extraction_criteria": "first 4s non-singing segments per speaker, with re-transcription",
+        "extraction_criteria": f"concatenated non-singing segments until >= {min_duration_minutes} minute(s) per speaker, with re-transcription",
     }
 
     return stage_data

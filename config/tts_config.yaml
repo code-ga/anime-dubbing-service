@@ -51,3 +51,7 @@ performance:
   batch_size: 1       # Number of segments to process in parallel
   max_workers: 4      # Maximum number of concurrent TTS workers
   timeout: 300        # Timeout in seconds for TTS generation
+
+# Reference audio settings
+reference_audio:
+  min_duration_minutes: 1  # Minimum duration in minutes for reference audio per speaker
