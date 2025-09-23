@@ -12,8 +12,9 @@ import yaml
 from dotenv import load_dotenv
 from utils.logger import get_logger
 from utils.metadata import (create_metadata, is_complete, load_metadata,
-                            load_previous_result, set_overall_error,
-                            update_failure, update_success)
+                             load_previous_result, set_overall_error,
+                             update_failure, update_success)
+from utils.srt_export import export_segments_to_srt, export_translation_to_srt
 
 load_dotenv("./.env")
 
@@ -365,62 +366,65 @@ def save_final_results(tmp_path, metadata_path, output_file):
         if json_path and os.path.exists(json_path):
             shutil.copy(json_path, os.path.join(results_dir, dest_name))
 
-    # Copy SRT files if they exist
+    # Generate SRT files directly from translate stage data
     translate_data = stage_results.get("translate", {})
     if translate_data:
         # Get stage data from the translate stage results
         stage_data = translate_data.get("stage_data", {})
 
-        # Determine possible SRT file locations
-        # SRT files could be in tmp_path or in a custom export_srt_directory
-        possible_dirs = [tmp_path]
+        # Check if we have segments to work with
+        segments = stage_data.get("segments", [])
+        target_lang = stage_data.get("target_lang", "en")
 
-        # If export_srt_directory was used, add it to possible directories
-        export_srt_dir = stage_data.get("export_srt_directory")
-        if export_srt_dir:
-            possible_dirs.append(export_srt_dir)
+        if not segments:
+            print("⚠️  No segments found in translate data, skipping SRT export")
+        else:
+            # Infer source language from segments or default to 'ja'
+            source_lang = "ja"  # default
+            if segments and "language" in segments[0]:
+                source_lang = segments[0].get("language", "ja")
+            elif stage_data.get("language"):
+                source_lang = stage_data.get("language", "ja")
 
-        # Copy translated SRT file if it exists
-        translated_srt_filename = stage_data.get("translated_srt_file")
-        if translated_srt_filename:
-            copied = False
-            for search_dir in possible_dirs:
-                translated_srt_path = os.path.join(search_dir, translated_srt_filename)
-                if os.path.exists(translated_srt_path):
-                    shutil.copy(translated_srt_path, os.path.join(results_dir, translated_srt_filename))
-                    print(f"✅ Copied translated SRT file: {translated_srt_filename}")
-                    copied = True
-                    break
-            if not copied:
-                print(f"⚠️  Translated SRT file not found: {translated_srt_filename}")
+            # Check if speaker information should be included
+            include_speaker = stage_data.get("srt_include_speaker", False)
 
-        # Copy original SRT file if it exists
-        original_srt_filename = stage_data.get("original_srt_file")
-        if original_srt_filename:
-            copied = False
-            for search_dir in possible_dirs:
-                original_srt_path = os.path.join(search_dir, original_srt_filename)
-                if os.path.exists(original_srt_path):
-                    shutil.copy(original_srt_path, os.path.join(results_dir, original_srt_filename))
-                    print(f"✅ Copied original SRT file: {original_srt_filename}")
-                    copied = True
-                    break
-            if not copied:
-                print(f"⚠️  Original SRT file not found: {original_srt_filename}")
+            try:
+                # Generate translated subtitles SRT file
+                translated_srt_filename = f"translated_subtitles_{target_lang}.srt"
+                translated_srt_path = os.path.join(results_dir, translated_srt_filename)
 
-        # Backward compatibility: copy single SRT file if it exists
-        srt_filename = stage_data.get("srt_file")
-        if srt_filename and not translated_srt_filename and not original_srt_filename:
-            copied = False
-            for search_dir in possible_dirs:
-                srt_path = os.path.join(search_dir, srt_filename)
-                if os.path.exists(srt_path):
-                    shutil.copy(srt_path, os.path.join(results_dir, srt_filename))
-                    print(f"✅ Copied SRT file: {srt_filename}")
-                    copied = True
-                    break
-            if not copied:
-                print(f"⚠️  SRT file not found: {srt_filename}")
+                export_translation_to_srt(
+                    translation_data=stage_data,
+                    output_path=translated_srt_path,
+                    text_field="translated_text",
+                    include_speaker=include_speaker,
+                    title=f"Translated Subtitles ({target_lang.upper()})"
+                )
+                print(f"✅ Exported translated SRT file: {translated_srt_filename}")
+
+                # Generate original transcription SRT file
+                original_srt_filename = f"original_transcription_{source_lang}.srt"
+                original_srt_path = os.path.join(results_dir, original_srt_filename)
+
+                export_segments_to_srt(
+                    segments=segments,
+                    output_path=original_srt_path,
+                    text_field="original_text",
+                    include_speaker=include_speaker,
+                    title=f"Original Transcription ({source_lang.upper()})"
+                )
+                print(f"✅ Exported original SRT file: {original_srt_filename}")
+
+            except Exception as e:
+                print(f"⚠️  Error generating SRT files: {e}")
+                # For backward compatibility, try to copy legacy files if they exist
+                legacy_srt_filename = stage_data.get("srt_file")
+                if legacy_srt_filename:
+                    legacy_srt_path = os.path.join(tmp_path, legacy_srt_filename)
+                    if os.path.exists(legacy_srt_path):
+                        shutil.copy(legacy_srt_path, os.path.join(results_dir, legacy_srt_filename))
+                        print(f"✅ Copied legacy SRT file: {legacy_srt_filename}")
 
     # Extract and save diarization embeddings
     transcribe_path = stage_results.get("transcribe", {}).get("json_path")

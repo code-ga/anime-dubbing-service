@@ -9,7 +9,10 @@ import torch
 import os
 import gc
 from typing import TypedDict, Optional
+from tqdm import tqdm
 
+# Import silero VAD utils
+from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,6 +88,46 @@ class WhisperResult(TypedDict):
     language: str
 
 
+def apply_vad(
+    audio_path: str, threshold: float = 0.5, min_speech_duration: float = 0.1
+) -> List[tuple]:
+    """
+    Apply Silero VAD to audio file to get speech segments.
+
+    Parameters
+    ----------
+    audio_path : str
+        Path to audio file
+    threshold : float
+        Speech detection threshold (default: 0.5)
+    min_speech_duration : float
+        Minimum speech duration in seconds (default: 0.1)
+
+    Returns
+    -------
+    List[tuple]
+        List of (start, end) timestamps in seconds
+    """
+    # Load Silero VAD model
+    model = load_silero_vad()
+
+    # Load audio
+    waveform, sample_rate = torchaudio.load(audio_path)
+    if waveform.dim() > 1:
+        waveform = torch.mean(waveform, dim=0, keepdim=True)
+
+    # Get speech timestamps
+    speech_timestamps = get_speech_timestamps(
+        waveform.squeeze(),
+        model,
+        threshold=threshold,
+        min_speech_duration_ms=int(min_speech_duration * 1000),
+        return_seconds=True,
+    )
+
+    return speech_timestamps
+
+
 def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
     """
     Transcribe an audio file using Whisper and assign speakers to words using Pyannote.
@@ -106,45 +149,108 @@ def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
     audioFilePath = os.path.join(tmp_path, inputs_data["separate_audio"]["vocals_path"])
     print(audioFilePath)
 
-    whisper_model = whisper.load_model("turbo", device=DEVICE)
-    result = whisper_model.transcribe(audioFilePath)
-    audio_transcript: list[WhisperSegment] = []
+    # Apply VAD to get speech segments
+    print("Applying VAD to detect speech segments...")
+    speech_segments = apply_vad(audioFilePath, threshold=0.5, min_speech_duration=0.1)
+
+    if not speech_segments:
+        print("No speech segments detected by VAD")
+        return {
+            "segments": [],
+            "language": language,
+            "text": "",
+            "speaker_embeddings": {},
+        }
+
+    print(f"Found {len(speech_segments)} speech segments")
+
+    # Load full audio for segment extraction
     audio, sr = torchaudio.load(audioFilePath)
     saving_dir = os.path.join(tmp_path, "whisper_audio")
     if not os.path.exists(saving_dir):
         os.makedirs(saving_dir)
-    for c in result["segments"]:
-        if isinstance(c, str):
-            raise ValueError
-        saving_path = os.path.join(saving_dir, f"{c['start']}_{c['end']}.wav")
+
+    whisper_model = whisper.load_model("turbo", device=DEVICE)
+    audio_transcript: list[WhisperSegment] = []
+
+    # Process each speech segment with Whisper
+    print("Transcribing speech segments...")
+    all_texts = []
+    detected_language = None
+
+    for i, (start_time, end_time) in enumerate(
+        tqdm(speech_segments, desc="Processing speech segments")
+    ):
+        # Extract segment audio
+        start_sample = int(start_time * sr)
+        end_sample = int(end_time * sr)
+        segment_audio = audio[:, start_sample:end_sample]
+
+        # Save temporary audio file for Whisper
+        temp_path = os.path.join(saving_dir, f"temp_segment_{i}.wav")
         torchaudio.save(
-            saving_path,
-            audio[:, int(c["start"] * sr) : int(c["end"] * sr)],
+            temp_path,
+            segment_audio,
             sr,
             encoding="PCM_S",
             bits_per_sample=16,
         )
-        # audio_transcript.append(WhisperSegment(**c, audioFilePath=saving_path))
-        whisper_segment: WhisperSegment = {
-            "audioFilePath": saving_path,
-            "seek": c["seek"],
-            "start": c["start"],
-            "end": c["end"],
-            "text": c["text"],
-            "tokens": c["tokens"],
-            "temperature": c["temperature"],
-            "avg_logprob": c["avg_logprob"],
-            "compression_ratio": c["compression_ratio"],
-            "no_speech_prob": c["no_speech_prob"],
-        }
-        audio_transcript.append(whisper_segment)
+
+        # Transcribe segment
+        segment_result = whisper_model.transcribe(temp_path)
+
+        # Store language from first segment
+        if detected_language is None:
+            detected_language = segment_result["language"]
+
+        # Process segment results and adjust timings to original audio
+        for c in segment_result["segments"]:
+            if isinstance(c, str):
+                raise ValueError
+
+            # Adjust timings to match original audio
+            adjusted_start = start_time + c["start"]
+            adjusted_end = start_time + c["end"]
+
+            saving_path = os.path.join(
+                saving_dir, f"{adjusted_start}_{adjusted_end}.wav"
+            )
+            torchaudio.save(
+                saving_path,
+                audio[:, int(adjusted_start * sr) : int(adjusted_end * sr)],
+                sr,
+                encoding="PCM_S",
+                bits_per_sample=16,
+            )
+
+            whisper_segment: WhisperSegment = {
+                "audioFilePath": saving_path,
+                "seek": c["seek"],
+                "start": adjusted_start,
+                "end": adjusted_end,
+                "text": c["text"],
+                "tokens": c["tokens"],
+                "temperature": c["temperature"],
+                "avg_logprob": c["avg_logprob"],
+                "compression_ratio": c["compression_ratio"],
+                "no_speech_prob": c["no_speech_prob"],
+            }
+            audio_transcript.append(whisper_segment)
+
+        # Collect text for full transcript
+        all_texts.append(segment_result["text"])
+
+        # Clean up temp file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    # Create combined result
+    combined_text = " ".join(all_texts)
     whisper_transcript: WhisperResult = {
         "segments": audio_transcript,
-        "language": str(result["language"]),
-        "text": str(result["text"]),
+        "language": str(detected_language or language),
+        "text": combined_text,
     }
     del whisper_model
-    del result
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
