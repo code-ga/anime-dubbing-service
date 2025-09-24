@@ -8,6 +8,34 @@ from typing import List, Dict, Optional
 import edge_tts
 from edge_tts import VoicesManager
 from tts.utils import adjust_audio_duration
+from utils.logger import get_logger
+
+# Supported languages for Edge-TTS
+EDGE_TTS_SUPPORTED_LANGUAGES = [
+    "en", "ja", "zh", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi"
+]
+
+
+def validate_language(target_lang: str) -> bool:
+    """
+    Validate if the target language is supported by Edge-TTS.
+
+    Args:
+        target_lang: Target language code (e.g., "en", "ja")
+
+    Returns:
+        bool: True if language is supported
+
+    Raises:
+        ValueError: If language is not supported
+    """
+    logger = get_logger("edge-tts-validator")
+
+    if target_lang not in EDGE_TTS_SUPPORTED_LANGUAGES:
+        logger.logger.error(f"Unsupported language {target_lang} for Edge-TTS")
+        raise ValueError(f"Target language {target_lang} not supported by Edge-TTS")
+
+    return True
 
 # TTS Configuration Constants
 TTS_SEGMENT_BATCH_SIZE = (

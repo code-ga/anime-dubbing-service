@@ -2,7 +2,10 @@
 # This file contains configuration options for different TTS methods
 
 # Default TTS method (used when not specified in stages.yaml)
-default_tts_method: "f5"
+default_tts_method: "xtts"
+
+# Global TTS settings
+use_emotion_in_tts: true
 
 # Available TTS methods and their configurations
 tts_methods:
@@ -32,6 +35,21 @@ tts_methods:
       style: "general"  # Speaking style
       style_degree: 1.0  # Style intensity (0.01 to 2.0)
       language_support: ["en", "ja", "zh", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi"]
+
+  # XTTS Configuration
+  xtts:
+    name: "Coqui XTTS-v2"
+    description: "Multilingual TTS with voice cloning from reference audio"
+    enabled: true
+    config:
+      model_name: "tts_models/multilingual/multi-dataset/xtts_v2"
+      device: "cuda"  # or "cpu"
+      speaker_wav_duration: 6  # seconds to use from ref
+      language: "auto"  # infer from target_lang
+      speed: 1.0
+      temperature: 0.7  # for variation/emotion
+      emotion_support: true  # if optional stage active
+      languages: ["en", "ja", "zh", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi"]
 
 # Voice mapping for different speakers (optional)
 # Maps speaker IDs to specific TTS voices

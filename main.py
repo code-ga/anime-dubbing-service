@@ -51,9 +51,9 @@ def main():
     )
     parser.add_argument(
         "--tts-method",
-        default="edge-tts",
-        choices=["edge-tts", "f5-tts"],
-        help="TTS method to use for audio generation (default: edge-tts)"
+        default="xtts",
+        choices=["xtts", "f5", "edge", "rvc"],
+        help="Select the TTS method for voice generation (default: xtts)"
     )
     parser.add_argument(
         "--log-level",

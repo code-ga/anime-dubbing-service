@@ -165,9 +165,9 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 - **Notes**: Uses torchaudio for slicing. Re-transcription of reference audio for better voice cloning accuracy. Speaker-specific transcribed text that matches the reference audio content. Improved alignment between ref_audio and ref_text for F5-TTS.
 
 ### 8. generate_tts
-- **Purpose**: Generate TTS per segment, clone voice via RVC using diarization.
+- **Purpose**: Generate TTS per segment, clone voice via XTTS (primary) or RVC using diarization.
 - **Module/Function**: `tts.orchestrator.generate_dubbed_segments`
-- **Inputs**: [build_refs], [translate], [transcribe] (embeddings for RVC model selection).
+- **Inputs**: [build_refs], [translate], [transcribe] (embeddings for RVC fallback).
 - **Outputs**: JSON with TTS file paths/timings.
 - **JSON Schema**:
   ```json
@@ -176,11 +176,14 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "tts_segments": [
       {"path": "tts/seg1.wav", "start": 0.0, "end": 5.0, "speaker": "SPEAKER_00", "duration": 4.8}
     ],
-    "rvc_models_used": {"SPEAKER_00": "rvc_model_id"},
-    "total_duration": 120.5
+    "xtts_models_used": {"SPEAKER_00": "xtts_v2"},
+    "tts_method": "xtts",
+    "total_duration": 120.5,
+    "tts_params": {"speed": 1.0, "language": "en", "temperature": 0.7}
   }
   ```
-- **Notes**: Skip singing; download RVC models based on embedding similarity to avoid unwanted clones.
+- **Notes**: Primary engine now Coqui XTTS-v2 for multilingual cloning; falls back to F5/Edge/RVC via config. Uses ref_audio (3-10s sliced from build_refs) and ref_text for conditioning. Download XTTS-v2 (~1GB) on first run. Skip singing; emotion integration via temperature if active. Ensure ref clips >=3s for cloning quality.
+- **XTTS-specific**: Voice cloning from speaker refs; multilingual output matches target_lang. Duration adjustment post-synthesis for mix sync.
 
 ### 9. mix_audio
 - **Purpose**: Mix TTS with original instrumental + music preservation.

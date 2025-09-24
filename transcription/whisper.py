@@ -90,7 +90,7 @@ class WhisperResult(TypedDict):
 
 def apply_vad(
     audio_path: str, threshold: float = 0.5, min_speech_duration: float = 0.1
-) -> List[tuple]:
+) -> List[dict[str, float]]:
     """
     Apply Silero VAD to audio file to get speech segments.
 
@@ -112,13 +112,11 @@ def apply_vad(
     model = load_silero_vad()
 
     # Load audio
-    waveform, sample_rate = torchaudio.load(audio_path)
-    if waveform.dim() > 1:
-        waveform = torch.mean(waveform, dim=0, keepdim=True)
+    audio = read_audio(audio_path, sampling_rate=16000)
 
     # Get speech timestamps
     speech_timestamps = get_speech_timestamps(
-        waveform.squeeze(),
+        audio,
         model,
         threshold=threshold,
         min_speech_duration_ms=int(min_speech_duration * 1000),
@@ -178,9 +176,14 @@ def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
     all_texts = []
     detected_language = None
 
-    for i, (start_time, end_time) in enumerate(
+    for i, segment in enumerate(
         tqdm(speech_segments, desc="Processing speech segments")
     ):
+        start_time = segment["start"]
+        end_time = segment["end"]
+        print(
+            f"Processing segment {i+1}/{len(speech_segments)}: {start_time:.2f}s to {end_time:.2f}s"
+        )
         # Extract segment audio
         start_sample = int(start_time * sr)
         end_sample = int(end_time * sr)

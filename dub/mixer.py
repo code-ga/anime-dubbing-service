@@ -135,8 +135,9 @@ def mix_audio(
                     ):  # Cap extreme speeds to avoid artifacts
                         seg_audio = AudioSegment.silent(duration=duration_ms)
                     else:
-                        # Apply speed change (pydub speedup method)
-                        seg_audio = speedup(seg_audio, playback_speed=speed_factor)
+                        # Apply speed change (pydub speedup method) - skip if no speedup needed or segment too short
+                        if speed_factor != 1.0 and len(seg_audio) >= 150:
+                            seg_audio = speedup(seg_audio, playback_speed=speed_factor)
             else:
                 pad_ms = duration_ms - len(seg_audio)
                 silence_segment = AudioSegment.silent(duration=pad_ms)

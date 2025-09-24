@@ -8,6 +8,34 @@ from typing import List, Dict
 import os
 import logging
 import gc
+from utils.logger import get_logger
+
+# Supported languages for F5-TTS
+F5_TTS_SUPPORTED_LANGUAGES = [
+    "en", "ja", "zh", "ko", "es", "fr", "de"
+]
+
+
+def validate_language(target_lang: str) -> bool:
+    """
+    Validate if the target language is supported by F5-TTS.
+
+    Args:
+        target_lang: Target language code (e.g., "en", "ja")
+
+    Returns:
+        bool: True if language is supported
+
+    Raises:
+        ValueError: If language is not supported
+    """
+    logger = get_logger("f5-tts-validator")
+
+    if target_lang not in F5_TTS_SUPPORTED_LANGUAGES:
+        logger.logger.error(f"Unsupported language {target_lang} for F5-TTS")
+        raise ValueError(f"Target language {target_lang} not supported by F5-TTS")
+
+    return True
 
 # TTS Configuration Constants
 # These constants control batch processing for memory management during TTS generation.
@@ -26,7 +54,6 @@ def generate_tts_custom(
     ref_text: str,
     model: F5TTS,
     vocos: Vocos,
-    checkpoint_path: str = "checkpoints/f5_tts_multilingual.pth",
 ):
     """
     Generate TTS using a custom fine-tuned F5-TTS model.
@@ -45,7 +72,7 @@ def generate_tts_custom(
     # Perform inference to get mel spectrogram
     print("Performing inference...")
     print(f"{ref_audio_path} - {ref_text} - {text}")
-    _, _, spec = model.infer(ref_audio_path, gen_text=text)
+    _, _, spec = model.infer(ref_audio_path, ref_text=ref_text, gen_text=text)
 
     if spec is None:
         raise ValueError(

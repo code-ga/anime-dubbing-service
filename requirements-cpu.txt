@@ -7,3 +7,4 @@ pyyaml
 edge-tts
 pydub
 librosa
+coqui-tts

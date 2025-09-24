@@ -9,8 +9,9 @@ import yaml
 from datetime import datetime
 from typing import List, Dict, Optional
 from vocos import Vocos
-from tts.F5 import generate_tts_custom, generate_tts_for_speaker, F5TTS
-from tts.edge_tts import generate_tts_for_speaker as generate_tts_for_speaker_edge
+from tts.F5 import generate_tts_custom, generate_tts_for_speaker, F5TTS, validate_language as validate_f5_language
+from tts.edge_tts import generate_tts_for_speaker as generate_tts_for_speaker_edge, validate_language as validate_edge_language
+from tts.xtts import generate_tts_for_speaker_xtts, validate_language as validate_xtts_language
 from utils.metadata import load_previous_result
 from utils.logger import get_logger
 
@@ -171,15 +172,36 @@ def generate_dubbed_segments(
 
     # Initialize TTS method-specific resources
     rvc_models_used = {}
+    xtts_models_used = {}
     model = None
     vocos = None
-    if tts_method == "edge-tts":
-        # For edge-tts, we don't need F5-TTS models or RVC models
+    if tts_method == "edge":
+        # For edge, we don't need F5-TTS models or RVC models
         # Voice selection is handled by edge-tts voice mapping
-        logging.info("Using edge-tts for TTS generation")
+        logging.info("Using Edge TTS for TTS generation")
         target_sr = 24000  # Standard sample rate for edge-tts output
+    elif tts_method == "xtts":
+        # XTTS model is loaded by the XTTS module
+        logging.info("Using XTTS for TTS generation")
+        target_sr = 24000  # XTTS output sample rate
+
+        for speaker in ref_audios_by_speaker:
+            xtts_models_used[speaker] = "xtts_v2"
+    elif tts_method == "rvc":
+        # RVC as fallback - use F5-TTS models for RVC processing
+        logging.info("Using RVC for TTS generation")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = F5TTS(model="F5TTS_Base")
+        vocos = Vocos.from_pretrained("charactr/vocos-mel-24khz").to(device)
+        target_sr = 24000  # Vocos-decoded output sample rate
+
+        for speaker in ref_audios_by_speaker:
+            # Placeholder for RVC model selection based on embedding
+            # In real implementation, compute similarity to known models or download if unknown
+            rvc_model_id = "default_rvc_model"  # Replace with actual logic using speaker_embeddings[speaker]
+            rvc_models_used[speaker] = rvc_model_id
     else:
-        # Load F5-TTS models for traditional TTS method
+        # Load F5-TTS models for traditional TTS method (default/f5)
         logging.info("Using F5-TTS for TTS generation")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = F5TTS(model="F5TTS_Base")
@@ -240,7 +262,11 @@ def generate_dubbed_segments(
             pass
 
         try:
-            if tts_method == "edge-tts":
+            # Validate language support before TTS generation
+            target_lang = translate_data.get("target_lang", "en")
+            if tts_method == "edge":
+                # Validate language support for Edge-TTS
+                validate_edge_language(target_lang)
                 # Use edge-tts implementation
                 speaker_tts_segments = generate_tts_for_speaker_edge(
                     segments,
@@ -249,10 +275,44 @@ def generate_dubbed_segments(
                     default_ref,
                     tmp_path,
                     target_sr,
-                    language=translate_data.get("target_lang", "en"),
+                    language=target_lang,
+                    ref_text=ref_text,
+                )
+            elif tts_method == "xtts":
+                # Validate language support for XTTS
+                validate_xtts_language(target_lang)
+                # Use XTTS implementation
+                speaker_tts_segments = generate_tts_for_speaker_xtts(
+                    segments,
+                    speaker,
+                    ref_audios_by_speaker,
+                    default_ref,
+                    tmp_path,
+                    target_sr,
+                    language=target_lang,
+                    ref_text=ref_text,
+                    emotion_data=None,  # TODO: Pass emotion data if available
+                )
+            elif tts_method == "rvc":
+                # Validate language support for F5-TTS (used for RVC)
+                validate_f5_language(target_lang)
+                # Use F5-TTS implementation for RVC - model and vocos are guaranteed to be initialized
+                assert model is not None, "F5-TTS model should be initialized"
+                assert vocos is not None, "Vocos model should be initialized"
+                speaker_tts_segments = generate_tts_for_speaker(
+                    segments,
+                    speaker,
+                    ref_audios_by_speaker,
+                    default_ref,
+                    tmp_path,
+                    target_sr,
+                    model,
+                    vocos,
                     ref_text=ref_text,
                 )
             else:
+                # Validate language support for F5-TTS (f5 method)
+                validate_f5_language(target_lang)
                 # Use F5-TTS implementation - model and vocos are guaranteed to be initialized in the else branch
                 assert model is not None, "F5-TTS model should be initialized"
                 assert vocos is not None, "Vocos model should be initialized"
@@ -287,8 +347,8 @@ def generate_dubbed_segments(
                 torch.cuda.empty_cache()
 
     # Clean up models and free memory after processing all speakers
-    if tts_method != "edge-tts" and model is not None and vocos is not None:
-        # Only clean up F5-TTS models if they were used
+    if tts_method not in ["edge", "xtts"] and model is not None and vocos is not None:
+        # Only clean up F5-TTS models if they were used (f5 and rvc use F5-TTS models)
         del model
         del vocos
     gc.collect()
@@ -308,7 +368,13 @@ def generate_dubbed_segments(
         "tts_method": tts_method,
     }
 
+    # Add XTTS-specific data if using XTTS
+    if tts_method == "xtts":
+        stage_data["xtts_models_used"] = xtts_models_used
+
     return stage_data
+
+
 
 
 def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
