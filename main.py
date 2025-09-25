@@ -88,6 +88,35 @@ def main():
         type=str,
         help="Optional title for SRT file"
     )
+    parser.add_argument(
+        "--transcription-only",
+        action="store_true",
+        help="Generate video with burned-in subtitles only (no dubbing), preserving original audio"
+    )
+    parser.add_argument(
+        "--skip-audio-separation",
+        action="store_true",
+        help="Skip audio separation stage for faster processing, using full audio track for transcription and mixing"
+    )
+    parser.add_argument(
+        "--subtitle-font-size",
+        type=int,
+        default=24,
+        help="Font size for burned-in subtitles (default: 24)"
+    )
+    parser.add_argument(
+        "--subtitle-color",
+        type=str,
+        default="white",
+        help="Color for burned-in subtitles (default: white)"
+    )
+    parser.add_argument(
+        "--subtitle-position",
+        type=str,
+        default="bottom",
+        choices=["bottom", "top", "middle"],
+        help="Position for burned-in subtitles (default: bottom)"
+    )
     args = parser.parse_args()
 
     # Update logger level based on argument
@@ -162,7 +191,21 @@ def main():
         raise FileNotFoundError(f"Stages config not found: {config_path}")
     with open(config_path, "r") as f:
         config_data = yaml.safe_load(f)
-    stages = config_data["stages"]
+    
+    # Filter stages based on transcription_only flag, skip_audio_separation flag and conditions
+    all_stages = config_data["stages"]
+    stages = []
+    for stage in all_stages:
+        condition = stage.get("condition")
+        if condition:
+            # Evaluate condition based on flags
+            if condition == "not transcription_only" and args.transcription_only:
+                continue  # Skip this stage
+            elif condition == "transcription_only" and not args.transcription_only:
+                continue  # Skip this stage
+            elif condition == "not skip_audio_separation" and args.skip_audio_separation:
+                continue  # Skip this stage
+        stages.append(stage)
 
     # Log pipeline start (now that we have stages)
     logger.log_pipeline_start(input_abs, os.path.abspath(args.output_mp4), len(stages))
@@ -215,6 +258,13 @@ def main():
                 inputs = stage_info["inputs"]
                 start_time = datetime.utcnow().isoformat() + "Z"
 
+                # Set current_stage before processing to ensure error handling matches
+                metadata["current_stage"] = stage
+                temp_path = metadata_path + ".tmp"
+                with open(temp_path, "w") as f:
+                    json.dump(metadata, f, indent=4)
+                os.replace(temp_path, metadata_path)
+
                 # Log stage start
                 logger.log_stage_start(stage, stage_idx, len(stages))
 
@@ -224,10 +274,17 @@ def main():
 
                 stage_data = None
                 try:
-                    # Load input data from previous stages
+                    # Load input data from previous stages, handling optional/missing inputs gracefully
                     inputs_data = {}
                     for inp in inputs:
-                        inputs_data[inp] = load_previous_result(metadata_path, inp)
+                        try:
+                            inputs_data[inp] = load_previous_result(metadata_path, inp)
+                        except ValueError as ve:
+                            if "result not found" in str(ve):
+                                logger.logger.warning(f"Optional input '{inp}' for stage '{stage}' not available (skipped stage); setting to None for fallback handling.")
+                                inputs_data[inp] = None
+                            else:
+                                raise
 
                     # Dynamic import and call
                     module_obj = importlib.import_module(module_path)
@@ -239,6 +296,15 @@ def main():
                             tmp_path, metadata_path, inputs_data, input_file=input_abs
                         )
                     elif stage == "translate":
+                        # Determine appropriate text field for SRT export in transcription-only mode
+                        srt_text_field = args.srt_text_field
+                        if args.transcription_only:
+                            # In transcription-only mode, use translated_text if target_lang is set, otherwise original_text
+                            if args.target_lang and args.target_lang != "en":  # Assuming "en" might be default but no translation
+                                srt_text_field = "translated_text"
+                            else:
+                                srt_text_field = "original_text"
+
                         stage_data = func(
                             tmp_path,
                             metadata_path,
@@ -246,7 +312,7 @@ def main():
                             target_lang=args.target_lang,
                             singing_model=args.singing_model,
                             export_srt=args.export_srt,
-                            srt_text_field=args.srt_text_field,
+                            srt_text_field=srt_text_field,
                             srt_include_speaker=args.srt_include_speaker,
                             srt_include_original=args.srt_include_original,
                             srt_title=args.srt_title,
@@ -259,6 +325,17 @@ def main():
                             inputs_data,
                             input_file=input_abs,
                             output_file=os.path.abspath(args.output_mp4),
+                        )
+                    elif stage == "burn_subtitles":
+                        stage_data = func(
+                            tmp_path,
+                            metadata_path,
+                            inputs_data,
+                            original_video_path=input_abs,
+                            output_file=os.path.abspath(args.output_mp4),
+                            font_size=args.subtitle_font_size,
+                            color=args.subtitle_color,
+                            position=args.subtitle_position,
                         )
                     elif stage == "mix_audio":
                         stage_data = func(tmp_path, metadata_path, inputs_data)
@@ -369,33 +446,42 @@ def save_final_results(tmp_path, metadata_path, output_file):
     # Generate SRT files directly from translate stage data
     translate_data = stage_results.get("translate", {})
     if translate_data:
-        # Get stage data from the translate stage results
-        stage_data = translate_data.get("stage_data", {})
-
-        # Check if we have segments to work with
-        segments = stage_data.get("segments", [])
-        target_lang = stage_data.get("target_lang", "en")
-
+        actual_stage_data = {}
+        if 'json_path' in translate_data:
+            json_path = os.path.join(tmp_path, translate_data['json_path'])
+            if os.path.exists(json_path):
+                with open(json_path, 'r') as f:
+                    actual_stage_data = json.load(f)
+        
+        # Fallback to old way if no json_path
+        stage_data = actual_stage_data or translate_data.get("stage_data", {})
+        
+        # Prioritize actual_stage_data, then root, then stage_data
+        segments = actual_stage_data.get("segments", translate_data.get("segments", stage_data.get("segments", [])))
+        target_lang = actual_stage_data.get("target_lang", translate_data.get("target_lang", stage_data.get("target_lang", "en")))
+        
         if not segments:
             print("⚠️  No segments found in translate data, skipping SRT export")
         else:
-            # Infer source language from segments or default to 'ja'
+            # Infer source language from actual_stage_data or segments or default to 'ja'
             source_lang = "ja"  # default
-            if segments and "language" in segments[0]:
+            if actual_stage_data.get("language"):
+                source_lang = actual_stage_data["language"]
+            elif segments and "language" in segments[0]:
                 source_lang = segments[0].get("language", "ja")
-            elif stage_data.get("language"):
-                source_lang = stage_data.get("language", "ja")
-
-            # Check if speaker information should be included
-            include_speaker = stage_data.get("srt_include_speaker", False)
-
+            elif translate_data.get("language") or stage_data.get("language"):
+                source_lang = translate_data.get("language", stage_data.get("language", "ja"))
+            
+            # Check if speaker information should be included, prioritize actual_stage_data
+            include_speaker = actual_stage_data.get("srt_include_speaker", translate_data.get("srt_include_speaker", stage_data.get("srt_include_speaker", False)))
+            
             try:
                 # Generate translated subtitles SRT file
                 translated_srt_filename = f"translated_subtitles_{target_lang}.srt"
                 translated_srt_path = os.path.join(results_dir, translated_srt_filename)
 
                 export_translation_to_srt(
-                    translation_data=stage_data,
+                    translation_data=actual_stage_data or stage_data,
                     output_path=translated_srt_path,
                     text_field="translated_text",
                     include_speaker=include_speaker,
@@ -419,7 +505,7 @@ def save_final_results(tmp_path, metadata_path, output_file):
             except Exception as e:
                 print(f"⚠️  Error generating SRT files: {e}")
                 # For backward compatibility, try to copy legacy files if they exist
-                legacy_srt_filename = stage_data.get("srt_file")
+                legacy_srt_filename = (actual_stage_data or stage_data).get("srt_file")
                 if legacy_srt_filename:
                     legacy_srt_path = os.path.join(tmp_path, legacy_srt_filename)
                     if os.path.exists(legacy_srt_path):

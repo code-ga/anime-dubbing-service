@@ -42,12 +42,12 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "metadata": {"total_duration": 120.5}
   }
   ```
-- **Notes**: Preserves music for later mixing.
+- **Notes**: Preserves music for later mixing. Can be skipped with --skip-audio-separation flag for faster processing.
 
 ### 3. transcribe
 - **Purpose**: Transcribe vocals + diarization (speakers/embeddings) for RVC.
 - **Module/Function**: `transcription.whisper.transcript`
-- **Inputs**: [separate_audio] (load vocals_path).
+- **Inputs**: [separate_audio] (load vocals_path) or [convert_mp4_to_wav] (load full_wav_path) if audio separation is skipped.
 - **Outputs**: JSON with segments, speakers, embeddings.
 - **JSON Schema**:
   ```json
@@ -64,7 +64,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "speaker_embeddings": {"SPEAKER_00": [0.1, 0.2, ...]}
   }
   ```
-- **Notes**: Reuses Whisper + Pyannote; embeddings for RVC voice cloning (download model per unique speaker).
+- **Notes**: Reuses Whisper + Pyannote; embeddings for RVC voice cloning (download model per unique speaker). Falls back to full audio track when audio separation is skipped.
 
 ### 4. emotion (Optional)
 - **Purpose**: Detect emotions in segments for expressive TTS.
@@ -143,7 +143,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 ### 7. build_refs
 - **Purpose**: Extract reference audios per speaker from original vocals with re-transcription for improved voice cloning accuracy.
 - **Module/Function**: Custom in main.py or tts (extract first non-singing 4s).
-- **Inputs**: [translate], [separate_audio] (for waveform).
+- **Inputs**: [translate], [separate_audio] (for waveform) or [convert_mp4_to_wav] (for waveform) if audio separation is skipped.
 - **Outputs**: JSON with ref paths and speaker-specific transcribed text.
 - **JSON Schema**:
   ```json
@@ -162,7 +162,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "extraction_criteria": "first 4s non-singing segments per speaker, with re-transcription"
   }
   ```
-- **Notes**: Uses torchaudio for slicing. Re-transcription of reference audio for better voice cloning accuracy. Speaker-specific transcribed text that matches the reference audio content. Improved alignment between ref_audio and ref_text for F5-TTS.
+- **Notes**: Uses torchaudio for slicing. Re-transcription of reference audio for better voice cloning accuracy. Speaker-specific transcribed text that matches the reference audio content. Improved alignment between ref_audio and ref_text for F5-TTS. Falls back to full audio track when audio separation is skipped, updating JSON with extraction source note.
 
 ### 8. generate_tts
 - **Purpose**: Generate TTS per segment, clone voice via XTTS (primary) or RVC using diarization.
@@ -188,7 +188,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 ### 9. mix_audio
 - **Purpose**: Mix TTS with original instrumental + music preservation.
 - **Module/Function**: `dub.mixer.mix_audio`
-- **Inputs**: [generate_tts], [separate_audio].
+- **Inputs**: [generate_tts], [separate_audio] or [convert_mp4_to_wav] if audio separation is skipped.
 - **Outputs**: JSON with dubbed WAV path.
 - **JSON Schema**:
   ```json
@@ -198,7 +198,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "mixing_params": {"crossfade_duration": 0.1, "volume_adjust": 1.0}
   }
   ```
-- **Notes**: Copy original for music segments.
+- **Notes**: Copy original for music segments. When audio separation is skipped, uses full_wav_path as base_audio and overlays TTS segments (may cause echo/overlap effects).
 
 ### 10. mux_video
 - **Purpose**: Mux dubbed audio with original video.
@@ -214,6 +214,32 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   }
   ```
 - **Notes**: No re-encode video.
+
+### 11. burn_subtitles
+- **Purpose**: Burn subtitles directly into video using FFmpeg for transcription-only mode.
+- **Module/Function**: `utils.burn_subtitles.burn_subtitles`
+- **Inputs**: [translate] (requires SRT file from export_srt).
+- **Outputs**: JSON with subtitled video path and burn parameters.
+- **JSON Schema**:
+  ```json
+  {
+    "stage": "burn_subtitles",
+    "subtitled_video_path": "output_subtitled.mp4",
+    "burn_params": {
+      "font_size": 24,
+      "color": "white",
+      "position": "bottom",
+      "srt_source": "translated_subtitles_en.srt"
+    },
+    "output_file_size": 104857600
+  }
+  ```
+- **Command Line Integration**:
+  - `--transcription-only`: Enable transcription-only mode (skips dubbing stages)
+  - `--subtitle-font-size`: Font size for burned-in subtitles (default: 24)
+  - `--subtitle-color`: Color for subtitles (default: white)
+  - `--subtitle-position`: Position for subtitles (bottom, top, middle; default: bottom)
+- **Notes**: Only runs in transcription-only mode. Burns subtitles from SRT file generated during translate stage. Preserves original audio without dubbing. Requires FFmpeg with subtitle filter support. Automatically determines text field (translated_text if target language set, otherwise original_text).
 
 ## Extending the Pipeline
 To add a new stage (e.g., "post_process"):

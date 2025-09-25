@@ -9,6 +9,7 @@ stages:
     function: separate
     inputs: [convert_mp4_to_wav]
     outputs: json
+    condition: "not skip_audio_separation"
   - name: transcribe
     module: transcription.whisper
     function: transcript
@@ -30,19 +31,29 @@ stages:
     function: build_speaker_refs
     inputs: [translate, separate_audio]
     outputs: json
+    condition: "not transcription_only"
   - name: generate_tts
     module: tts.orchestrator
     function: generate_dubbed_segments
     inputs: [build_refs, translate, transcribe]
     outputs: json
     tts_method: "xtts"  # Options: "f5", "edge_tts", "xtts"
+    condition: "not transcription_only"
   - name: mix_audio
     module: dub.mixer
     function: mix_audio
-    inputs: [generate_tts, separate_audio, transcribe]
+    inputs: [generate_tts, separate_audio, transcribe, translate]
     outputs: json
+    condition: "not transcription_only"
   - name: mux_video
     module: main
     function: mux_video
     inputs: [mix_audio]
     outputs: json
+    condition: "not transcription_only"
+  - name: burn_subtitles
+    module: utils.burn_subtitles
+    function: burn_subtitles
+    inputs: [translate]
+    outputs: json
+    condition: "transcription_only"

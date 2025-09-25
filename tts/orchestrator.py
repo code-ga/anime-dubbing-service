@@ -401,10 +401,17 @@ def build_speaker_refs(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
     logger.logger.info(f"📏 Using minimum reference duration: {min_duration_minutes} minute(s)")
 
     transcribe_data = load_previous_result(metadata_path, "transcribe")
-    separate_data = inputs_data["separate_audio"]
+    separate_data = inputs_data.get("separate_audio")
 
-    vocals_path = os.path.join(tmp_path, separate_data["vocals_path"])
-    logger.logger.info(f"📁 Loading vocals from: {vocals_path}")
+    # Use vocals_path if separate_audio was run, otherwise fallback to full_wav_path
+    if separate_data and "vocals_path" in separate_data:
+        vocals_path = os.path.join(tmp_path, separate_data["vocals_path"])
+        logger.logger.info(f"📁 Loading separated vocals from: {vocals_path}")
+    else:
+        # Fallback to full audio when audio separation is skipped
+        convert_data = inputs_data.get("convert_mp4_to_wav", {})
+        vocals_path = os.path.join(tmp_path, convert_data.get("full_wav_path", "full.wav"))
+        logger.logger.info(f"📁 Loading full audio (audio separation skipped) from: {vocals_path}")
 
     waveform, sr = torchaudio.load(vocals_path)
     logger.logger.info(f"🎵 Audio loaded: {waveform.shape[1]/sr:.2f} seconds at {sr}Hz")

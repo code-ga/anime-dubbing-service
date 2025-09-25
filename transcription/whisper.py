@@ -144,8 +144,16 @@ def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
 
     """
 
-    audioFilePath = os.path.join(tmp_path, inputs_data["separate_audio"]["vocals_path"])
-    print(audioFilePath)
+    # Use vocals_path if separate_audio was run, otherwise fallback to full_wav_path
+    separate_audio_data = inputs_data.get("separate_audio")
+    if separate_audio_data and "vocals_path" in separate_audio_data:
+        audioFilePath = os.path.join(tmp_path, separate_audio_data["vocals_path"])
+        print(f"Using separated vocals: {audioFilePath}")
+    else:
+        # Fallback to full audio when audio separation is skipped
+        convert_data = inputs_data.get("convert_mp4_to_wav", {})
+        audioFilePath = os.path.join(tmp_path, convert_data.get("full_wav_path", "full.wav"))
+        print(f"Using full audio (audio separation skipped): {audioFilePath}")
 
     # Apply VAD to get speech segments
     print("Applying VAD to detect speech segments...")
