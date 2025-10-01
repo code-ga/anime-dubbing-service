@@ -145,11 +145,19 @@ def generate_tts_for_speaker(
 
     speaker_tts_segments = []
 
+    total_segments = len(segments)
+    logging.info(f"🎯 Starting F5-TTS generation for speaker {speaker} ({total_segments} segments)")
+
     # Process segments in batches to manage memory usage
     for i in range(0, len(segments), TTS_SEGMENT_BATCH_SIZE):
         batch_segments = segments[i : i + TTS_SEGMENT_BATCH_SIZE]
+        batch_num = i // TTS_SEGMENT_BATCH_SIZE + 1
+        total_batches = (total_segments + TTS_SEGMENT_BATCH_SIZE - 1) // TTS_SEGMENT_BATCH_SIZE
 
-        for seg in batch_segments:
+        logging.info(f"🔄 [{speaker}] Processing batch {batch_num}/{total_batches} ({len(batch_segments)} segments)")
+
+        for seg_idx, seg in enumerate(batch_segments, 1):
+            global_idx = i + seg_idx
             start = seg["start"]
             end = seg["end"]
             duration = end - start
@@ -162,15 +170,30 @@ def generate_tts_for_speaker(
                 else seg.get("original_text", seg["translated_text"])
             )
 
-            # Generate TTS for translated text using speaker reference
-            generate_tts_custom(
-                text=seg["translated_text"],
-                ref_audio_path=ref_audio,
-                ref_text=ref_text_to_use,
-                output_path=output_wav,
-                model=model,
-                vocos=vocos,
-            )
+            text = seg.get("translated_text", "")
+            if not text.strip():
+                logging.warning(f"⚠️  [{speaker}] Skipping segment {global_idx}/{total_segments}: empty text")
+                continue
+
+            # Progress logging
+            logging.info(f"🎯 [{speaker}] Generating F5-TTS {global_idx}/{total_segments}: '{text[:50]}{'...' if len(text) > 50 else ''}' ({duration:.2f}s)")
+
+            try:
+                # Generate TTS for translated text using speaker reference
+                generate_tts_custom(
+                    text=seg["translated_text"],
+                    ref_audio_path=ref_audio,
+                    ref_text=ref_text_to_use,
+                    output_path=output_wav,
+                    model=model,
+                    vocos=vocos,
+                )
+
+                logging.info(f"✅ [{speaker}] Completed segment {global_idx}/{total_segments}: {os.path.basename(output_wav)}")
+
+            except Exception as e:
+                logging.error(f"❌ [{speaker}] Failed segment {global_idx}/{total_segments} ({start:.1f}-{end:.1f}s): {e}")
+                continue
 
             # Load the generated audio and match duration for timeline sync
             waveform, sample_rate = torchaudio.load(output_wav)

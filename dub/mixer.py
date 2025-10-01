@@ -54,7 +54,13 @@ def remove_trailing_silence(
     return audio_segment
 
 
-def mix_audio(tmp_path: str, metadata_path: str, inputs_data=None, **kwargs) -> dict:
+def mix_audio(
+    tmp_path: str,
+    metadata_path: str,
+    inputs_data=None,
+    max_speed_factor: float = 2.0,
+    **kwargs,
+) -> dict:
     """
     Mixes the instrumental audio with dubbed vocals (TTS for speech + original vocals for singing).
     Creates base track from vocals + instrumental, then mutes original vocals in spoken segments
@@ -66,23 +72,37 @@ def mix_audio(tmp_path: str, metadata_path: str, inputs_data=None, **kwargs) -> 
 
     # Load audio based on whether separation was performed
     separate_data = inputs_data.get("separate_audio") if inputs_data else None
-    if separate_data and "vocals_path" in separate_data and "instrumental_path" in separate_data:
+    if (
+        separate_data
+        and "vocals_path" in separate_data
+        and "instrumental_path" in separate_data
+    ):
         # Audio separation was performed
         vocals_path = os.path.join(tmp_path, separate_data["vocals_path"])
         instrumental_path = os.path.join(tmp_path, separate_data["instrumental_path"])
         vocals = AudioSegment.from_wav(vocals_path)
         instrumental = AudioSegment.from_wav(instrumental_path)
         sr = vocals.frame_rate
-        logging.info(f"Using separated audio: vocals={vocals_path}, instrumental={instrumental_path}")
+        logging.info(
+            f"Using separated audio: vocals={vocals_path}, instrumental={instrumental_path}"
+        )
     else:
         # Audio separation was skipped - use full audio as base and overlay TTS
         convert_data = inputs_data.get("convert_mp4_to_wav", {}) if inputs_data else {}
-        full_audio_path = os.path.join(tmp_path, convert_data.get("full_wav_path", "full.wav"))
+        full_audio_path = os.path.join(
+            tmp_path, convert_data.get("full_wav_path", "full.wav")
+        )
         vocals = AudioSegment.from_wav(full_audio_path)
-        instrumental = AudioSegment.silent(duration=len(vocals))  # Empty instrumental track
+        instrumental = AudioSegment.silent(
+            duration=len(vocals)
+        )  # Empty instrumental track
         sr = vocals.frame_rate
-        logging.info(f"Audio separation skipped - using full audio as base: {full_audio_path}")
-        logging.warning("⚠️  Audio separation was skipped. TTS will be overlaid on original audio, which may cause echo/overlap effects.")
+        logging.info(
+            f"Audio separation skipped - using full audio as base: {full_audio_path}"
+        )
+        logging.warning(
+            "⚠️  Audio separation was skipped. TTS will be overlaid on original audio, which may cause echo/overlap effects."
+        )
 
     # Load translate data to extract segments with is_singing information
     translate_data = load_previous_result(metadata_path, "translate")
@@ -120,13 +140,27 @@ def mix_audio(tmp_path: str, metadata_path: str, inputs_data=None, **kwargs) -> 
     # Create new base track with muted vocals + instrumental
     base_track = muted_vocals.overlay(instrumental)
 
+    total_segments = len(tts_segments)
+    # last_end_time = 0
+
+    logging.info(f"🎚️  Starting audio mixing with {total_segments} TTS segments")
+
     # Overlay TTS segments on the base track
-    for tts_seg in tts_segments:
+    for idx, tts_seg in enumerate(tts_segments, 1):
         start_ms = int(tts_seg["start"] * 1000)
         duration_ms = int((tts_seg["end"] - tts_seg["start"]) * 1000)
+        # if duration_ms <= 0 or start_ms < last_end_time:
+        #     logging.warning(
+        #         f"⚠️  Skipping invalid or overlapping TTS segment {idx}/{total_segments}: {tts_seg['path']} for duration {duration_ms}ms"
+        #     )
+        #     continue  # Skip invalid or overlapping segments
+        # last_end_time = start_ms + duration_ms
 
         # Load TTS audio
-        print(f"Processing TTS segment: {tts_seg['path']} for duration {duration_ms}ms")
+        speaker = tts_seg.get("speaker", "Unknown")
+        tts_method = tts_seg.get("tts_method", "unknown")
+        logging.info(f"🎵 Mixing segment {idx}/{total_segments}: {speaker} ({tts_method}) - {duration_ms}ms at {start_ms}ms")
+
         tts_audio = AudioSegment.from_wav(os.path.join(tmp_path, tts_seg["path"]))
         # Remove trailing silence to prevent oversized audio segments
         tts_audio = remove_trailing_silence(tts_audio)
@@ -139,9 +173,10 @@ def mix_audio(tmp_path: str, metadata_path: str, inputs_data=None, **kwargs) -> 
         if tts_audio.channels == 1:
             tts_audio = tts_audio.set_channels(2)
 
-        # Speed up or pad to match exact segment duration
-        if len(tts_audio) > duration_ms:
-            print(f"Speeding up TTS from {len(tts_audio)}ms to {duration_ms}ms")
+        # Speed up or pad to match exact segment duration (only for Edge-TTS)
+        tts_method = tts_seg.get("tts_method", "unknown")
+        if len(tts_audio) > duration_ms and tts_method == "edge":
+            logging.info(f"⚡ Speeding up Edge-TTS from {len(tts_audio)}ms to {duration_ms}ms")
             # Calculate speed factor to fit the target duration
             if duration_ms <= 0:
                 tts_audio = AudioSegment.silent(duration=duration_ms)
@@ -150,13 +185,20 @@ def mix_audio(tmp_path: str, metadata_path: str, inputs_data=None, **kwargs) -> 
             else:
                 speed_factor = len(tts_audio) / duration_ms
                 if (
-                    speed_factor <= 0 or speed_factor > 2.0
-                ):  # Cap extreme speeds to avoid artifacts (max 2.0x speed)
+                    speed_factor <= 0
+                ):  # Cap extreme speeds to avoid artifacts (configurable max speed)
                     tts_audio = AudioSegment.silent(duration=duration_ms)
                 else:
                     # Apply speed change - skip if no speedup needed or segment too short
                     if speed_factor != 1.0 and len(tts_audio) >= 150:
-                        tts_audio = speedup(tts_audio, playback_speed=speed_factor)
+                        # Limit speed factor to max_speed_factor
+                        actual_speed = (
+                            speed_factor
+                            if speed_factor < max_speed_factor
+                            else max_speed_factor
+                        )
+                        logging.info(f"🚀 Applying speed factor: {actual_speed:.2f}x (limited to max {max_speed_factor}x)")
+                        tts_audio = speedup(tts_audio, playback_speed=actual_speed)
         else:
             print(f"Padding TTS from {len(tts_audio)}ms to {duration_ms}ms")
             # Pad with silence to reach target duration

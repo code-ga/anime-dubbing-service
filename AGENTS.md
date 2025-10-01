@@ -174,7 +174,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   {
     "stage": "generate_tts",
     "tts_segments": [
-      {"path": "tts/seg1.wav", "start": 0.0, "end": 5.0, "speaker": "SPEAKER_00", "duration": 4.8}
+      {"path": "tts/seg1.wav", "start": 0.0, "end": 5.0, "speaker": "SPEAKER_00", "duration": 4.8, "tts_method": "edge"}
     ],
     "xtts_models_used": {"SPEAKER_00": "xtts_v2"},
     "orpheus_models_used": {"SPEAKER_00": "canopyai/Orpheus-3B-0.1-ft"},
@@ -186,6 +186,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 - **Notes**: Primary engine now Coqui XTTS-v2 for multilingual cloning; falls back to F5/Edge/RVC/Orpheus via config. Uses ref_audio (3-10s sliced from build_refs) and ref_text for conditioning. Download XTTS-v2 (~1GB) on first run. Skip singing; emotion integration via temperature if active. Ensure ref clips >=3s for cloning quality.
 - **XTTS-specific**: Voice cloning from speaker refs; multilingual output matches target_lang. Duration adjustment post-synthesis for mix sync.
 - **Orpheus-specific**: Advanced voice cloning with enhanced quality and emotion support. Requires GPU with CUDA. Falls back to XTTS if GPU unavailable. Supports emotion tags when emotion stage is active. Model variants: finetuned (default), pretrained, multilingual. Uses reference audio and text for voice conditioning.
+- **Edge-TTS-specific**: Supports speed adjustment via --max-speed-factor flag (default: 2.0). Other TTS engines do not support speed adjustment.
 
 ### 9. mix_audio
 - **Purpose**: Mix TTS with original instrumental + music preservation.
@@ -197,10 +198,10 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   {
     "stage": "mix_audio",
     "dubbed_wav_path": "dubbed.wav",
-    "mixing_params": {"crossfade_duration": 0.1, "volume_adjust": 1.0}
+    "mixing_params": {"crossfade_duration": 0.1, "volume_adjust": 1.0, "max_speed_factor": 2.0}
   }
   ```
-- **Notes**: Copy original for music segments. When audio separation is skipped, uses full_wav_path as base_audio and overlays TTS segments (may cause echo/overlap effects).
+- **Notes**: Copy original for music segments. When audio separation is skipped, uses full_wav_path as base_audio and overlays TTS segments (may cause echo/overlap effects). Speed adjustment is only applied to Edge-TTS segments via the --max-speed-factor flag (default: 2.0).
 
 ### 10. mux_video
 - **Purpose**: Mux dubbed audio with original video.

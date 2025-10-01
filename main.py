@@ -124,6 +124,12 @@ def main():
         default=False,
         help="Burn subtitles into the final video (default: False)"
     )
+    parser.add_argument(
+        "--max-speed-factor",
+        type=float,
+        default=float("inf"),
+        help="Maximum speed factor allowed for TTS audio adjustment (default: infinity)"
+    )
     args = parser.parse_args()
 
     # Update logger level based on argument
@@ -348,9 +354,9 @@ def main():
                             position=args.subtitle_position,
                         )
                     elif stage == "mix_audio":
-                        stage_data = func(tmp_path, metadata_path, inputs_data)
+                        stage_data = func(tmp_path, metadata_path, inputs_data, max_speed_factor=args.max_speed_factor)
                     elif stage == "generate_tts":
-                        stage_data = func(tmp_path, metadata_path, inputs_data, tts_method=args.tts_method)
+                        stage_data = func(tmp_path, metadata_path, inputs_data, tts_method=args.tts_method, max_speed_factor=args.max_speed_factor)
                     else:
                         stage_data = func(tmp_path, metadata_path, inputs_data)
 

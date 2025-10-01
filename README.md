@@ -226,6 +226,9 @@ output.mp4             # Output dubbed video file
 --subtitle-font-size SIZE - Font size for burned subtitles (default: 24)
 --subtitle-color COLOR - Color for subtitles (default: white)
 --subtitle-position POS - Position for subtitles (bottom, top, middle; default: bottom)
+
+# Audio Speed Control Options
+--max-speed-factor FLOAT - Maximum speed factor for TTS audio adjustment (default: 2.0, Edge-TTS only)
 ```
 
 ### Environment Variables
@@ -1218,19 +1221,20 @@ Arguments:
   output_file             Path for output dubbed video file
 
 Options:
-  --music_threshold FLOAT Range: 0.0-1.0, default: 0.6
-  --target_lang TEXT      Target language code, default: "en"
-  --tts-method TEXT       TTS engine: "edge_tts" or "f5", default: "edge_tts"
-  --keep-tmp             Preserve temporary files
-  --tmp-dir TEXT          Custom temporary directory path
+   --music_threshold FLOAT Range: 0.0-1.0, default: 0.6
+   --target_lang TEXT      Target language code, default: "en"
+   --tts-method TEXT       TTS engine: "edge_tts" or "f5", default: "edge_tts"
+   --keep-tmp             Preserve temporary files
+   --tmp-dir TEXT          Custom temporary directory path
+   --max-speed-factor FLOAT Maximum speed factor for TTS audio adjustment, default: 2.0
 
-SRT Export Options:
-  --export-srt                    Enable SRT subtitle export (exports both translated and original subtitles by default)
-  --export-srt-directory TEXT     Directory for SRT files, default: "./srt"
-  --srt-text-field TEXT           Text field: "translated_text" or "original_text"
-  --srt-include-speaker           Include speaker information in subtitles
-  --srt-include-original          Include original text alongside translation
-  --srt-title TEXT                Optional title for SRT file
+ SRT Export Options:
+   --export-srt                    Enable SRT subtitle export (exports both translated and original subtitles by default)
+   --export-srt-directory TEXT     Directory for SRT files, default: "./srt"
+   --srt-text-field TEXT           Text field: "translated_text" or "original_text"
+   --srt-include-speaker           Include speaker information in subtitles
+   --srt-include-original          Include original text alongside translation
+   --srt-title TEXT                Optional title for SRT file
 ```
 
 ### Configuration Files

@@ -219,7 +219,7 @@ class XTTSGenerator:
         else:
             return ref_audio_path
 
-    def get_emotion_parameters(self, speaker: str, emotion_data: Optional[Dict] = None) -> Dict[str, float]:
+    def get_emotion_parameters(self, speaker: str, emotion_data: Optional[Dict] = None, max_speed_factor: float = 2.0) -> Dict[str, float]:
         """
         Get emotion-based parameters for TTS generation.
 
@@ -264,10 +264,10 @@ class XTTSGenerator:
         except (TypeError, ValueError):
             speed = 1.0
 
-        # Clamp speed to maximum of 2.0x
-        if speed > 2.0:
-            self.logger.logger.warning(f"Speed factor {speed} exceeds maximum limit of 2.0, clamping to 2.0")
-            speed = 2.0
+        # Clamp speed to configurable maximum
+        if speed > max_speed_factor:
+            self.logger.logger.warning(f"Speed factor {speed} exceeds maximum limit of {max_speed_factor}, clamping to {max_speed_factor}")
+            speed = max_speed_factor
 
         # Apply emotion-based adjustments if available
         if emotion_data and emotion_support:
@@ -297,6 +297,7 @@ class XTTSGenerator:
         language: str = "en",
         ref_text: str = "",
         emotion_data: Optional[Dict] = None,
+        max_speed_factor: float = 2.0,
     ) -> List[Dict]:
         """
         Generate TTS audio segments for a specific speaker using XTTS.
@@ -331,11 +332,15 @@ class XTTSGenerator:
         processed_ref_path = self.process_reference_audio(ref_audio_full_path)
 
         # Get emotion parameters
-        emotion_params = self.get_emotion_parameters(speaker, emotion_data)
+        emotion_params = self.get_emotion_parameters(speaker, emotion_data, max_speed_factor)
 
-        for segment in segments:
+        total_segments = len(segments)
+        self.logger.logger.info(f"🎭 Starting XTTS generation for speaker {speaker} ({total_segments} segments)")
+
+        for idx, segment in enumerate(segments, 1):
             text = segment.get("translated_text", "")
             if not text.strip():
+                self.logger.logger.warning(f"⚠️  Skipping segment {idx}/{total_segments}: empty text")
                 continue
 
             start_time = segment["start"]
@@ -346,6 +351,9 @@ class XTTSGenerator:
                 # Generate TTS with emotion parameters
                 output_filename = f"tts/{speaker}_{start_time:.1f}_{end_time:.1f}.wav"
                 output_path = os.path.join(tmp_path, output_filename)
+
+                # Progress logging
+                self.logger.logger.info(f"🔊 [{speaker}] Generating TTS {idx}/{total_segments}: '{text[:50]}{'...' if len(text) > 50 else ''}' ({duration:.2f}s)")
 
                 wav_tensor = self.generate_tts_segment(
                     text=text,
@@ -365,14 +373,18 @@ class XTTSGenerator:
                     "speaker": speaker,
                     "duration": duration,
                     "text": text,
+                    "tts_method": "xtts"
                 }
                 tts_segments.append(tts_segment)
 
-                self.logger.logger.info(f"Generated: {output_filename} ({duration:.2f}s)")
+                # Success logging
+                self.logger.logger.info(f"✅ [{speaker}] Completed segment {idx}/{total_segments}: {output_filename}")
 
             except Exception as e:
-                self.logger.logger.error(f"Failed to generate TTS for segment {start_time:.1f}-{end_time:.1f}: {e}")
+                self.logger.logger.error(f"❌ [{speaker}] Failed segment {idx}/{total_segments} ({start_time:.1f}-{end_time:.1f}): {e}")
                 continue
+
+        self.logger.logger.info(f"✅ XTTS generation completed for speaker {speaker}: {len(tts_segments)}/{total_segments} segments successful")
 
         return tts_segments
 
@@ -414,6 +426,7 @@ def generate_tts_for_speaker_xtts(
     language: str = "en",
     ref_text: str = "",
     emotion_data: Optional[Dict] = None,
+    max_speed_factor: float = 2.0,
 ) -> List[Dict]:
     """
     Generate TTS audio segments for a specific speaker using XTTS.
@@ -444,4 +457,5 @@ def generate_tts_for_speaker_xtts(
         language=language,
         ref_text=ref_text,
         emotion_data=emotion_data,
+        max_speed_factor=max_speed_factor,
     )

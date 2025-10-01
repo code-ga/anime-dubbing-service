@@ -8,7 +8,7 @@ import gc
 from datetime import datetime
 from typing import List, Dict, Optional
 from vocos import Vocos
-from tts.F5 import generate_tts_custom, generate_tts_for_speaker, F5TTS, validate_language as validate_f5_language
+from tts.F5 import  generate_tts_for_speaker, F5TTS, validate_language as validate_f5_language
 from tts.edge_tts import generate_tts_for_speaker as generate_tts_for_speaker_edge, validate_language as validate_edge_language
 from tts.xtts import generate_tts_for_speaker_xtts, validate_language as validate_xtts_language
 from tts.config import TTS_SPEAKER_BATCH_SIZE, load_tts_config
@@ -146,7 +146,7 @@ class XTTSGenerator(TTSEngine):
             if not text.strip():
                 raise TTSEngineGenerationError("Empty text for TTS generation")
 
-            # Use the existing XTTS function
+            # Use the existing XTTS function (no speed parameter for XTTS)
             speaker_tts_segments = generate_tts_for_speaker_xtts(
                 [segment],  # Pass as list since the function expects segments
                 segment.get("speaker", "default"),
@@ -402,7 +402,7 @@ class EdgeTTSGenerator(TTSEngine):
             if not text.strip():
                 raise TTSEngineGenerationError("Empty text for TTS generation")
 
-            # Use the existing Edge-TTS function
+            # Use the existing Edge-TTS function (only Edge-TTS supports speed adjustment)
             speaker_tts_segments = generate_tts_for_speaker_edge(
                 [segment],  # Pass as list since the function expects segments
                 segment.get("speaker", "default"),
@@ -413,6 +413,7 @@ class EdgeTTSGenerator(TTSEngine):
                 language=kwargs.get("language", "en"),
                 ref_text=ref_text or "",
                 speed=1.0,  # Default speed, can be made configurable later
+                max_speed_factor=kwargs.get("max_speed_factor", 2.0),
             )
 
             if not speaker_tts_segments:
@@ -1098,7 +1099,7 @@ def generate_tts_for_speaker_orpheus(
 
 
 def generate_dubbed_segments(
-    tmp_path, metadata_path, inputs_data, tts_method="edge-tts", **kwargs
+    tmp_path, metadata_path, inputs_data, tts_method="edge-tts", max_speed_factor=2.0, **kwargs
 ) -> dict:
     """
     Generate dubbed audio segments from the translated JSON file, skipping singing segments and those with empty translated text.
@@ -1196,6 +1197,11 @@ def generate_dubbed_segments(
         logger.logger.info(f"⏭️  {skipped_segments} segments skipped (singing/empty)")
 
     # Log speaker distribution
+    logger.logger.info(f"👥 Speaker distribution:")
+    for speaker, segments in segments_by_speaker.items():
+        logger.logger.info(f"  👤 {speaker}: {len(segments)} segments")
+
+    # Log speaker distribution
     logger.logger.info(f"👥 Processing {len(segments_by_speaker)} unique speakers")
     for speaker, segments in segments_by_speaker.items():
         logger.logger.info(f"  👤 {speaker}: {len(segments)} segments")
@@ -1226,13 +1232,22 @@ def generate_dubbed_segments(
             # Generate TTS for each segment using the engine
             for segment in segments:
                 try:
+                    # Only pass max_speed_factor to Edge-TTS
+                    kwargs_for_engine = {
+                        "tmp_path": tmp_path,
+                        "language": target_lang,
+                        "emotion_data": None,  # TODO: Pass emotion data if available
+                    }
+
+                    # Only Edge-TTS supports speed adjustment
+                    if tts_method == "edge":
+                        kwargs_for_engine["max_speed_factor"] = max_speed_factor
+
                     tts_segment = engine.generate_segment(
                         segment,
                         ref_audio,
                         ref_text,
-                        tmp_path=tmp_path,
-                        language=target_lang,
-                        emotion_data=None,  # TODO: Pass emotion data if available
+                        **kwargs_for_engine
                     )
                     tts_segments.append(tts_segment)
                 except TTSEngineGenerationError as e:

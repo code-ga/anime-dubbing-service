@@ -71,20 +71,21 @@ LANGUAGE_VOICE_MAP = {
 }
 
 
-def speed_to_rate(speed: float) -> str:
+def speed_to_rate(speed: float, max_speed_factor: float = 2.0) -> str:
     """
     Convert speed factor to Edge-TTS rate string.
 
     Args:
         speed: Speed factor (1.0 = normal speed, 2.0 = 2x speed)
+        max_speed_factor: Maximum allowed speed factor
 
     Returns:
         Rate string for Edge-TTS (e.g., "+0%", "+100%")
     """
-    # Clamp speed to maximum of 2.0x
-    if speed > 2.0:
-        logging.warning(f"Speed factor {speed} exceeds maximum limit of 2.0, clamping to 2.0")
-        speed = 2.0
+    # Clamp speed to configurable maximum
+    if speed > max_speed_factor:
+        logging.warning(f"Speed factor {speed} exceeds maximum limit of {max_speed_factor}, clamping to {max_speed_factor}")
+        speed = max_speed_factor
 
     # Convert speed to percentage (1.0 = 0%, 2.0 = 100%)
     rate_percentage = int((speed - 1.0) * 100)
@@ -134,6 +135,7 @@ async def generate_tts_audio_async(
     volume: str = "+0%",
     pitch: str = "+0Hz",
     speed: float = 1.0,
+    max_speed_factor: float = 2.0,
 ) -> bool:
     """
     Generate TTS audio asynchronously using edge-tts.
@@ -153,7 +155,7 @@ async def generate_tts_audio_async(
     try:
         # Convert speed to rate if speed parameter is provided
         if speed != 1.0:
-            rate = speed_to_rate(speed)
+            rate = speed_to_rate(speed, max_speed_factor)
 
         # Create TTS communication object
         communicate = edge_tts.Communicate(
@@ -185,6 +187,7 @@ def generate_tts_for_speaker(
     language: str = "en",
     gender_preference: str = "neutral",
     speed: float = 1.0,
+    max_speed_factor: float = 2.0,
     **kwargs,
 ) -> List[Dict]:
     """
@@ -214,11 +217,19 @@ def generate_tts_for_speaker(
 
     speaker_tts_segments = []
 
+    total_segments = len(segments)
+    logging.info(f"🎤 Starting Edge-TTS generation for speaker {speaker} using voice '{voice}' ({total_segments} segments)")
+
     # Process segments in batches to manage memory usage
     for i in range(0, len(segments), TTS_SEGMENT_BATCH_SIZE):
         batch_segments = segments[i : i + TTS_SEGMENT_BATCH_SIZE]
+        batch_num = i // TTS_SEGMENT_BATCH_SIZE + 1
+        total_batches = (total_segments + TTS_SEGMENT_BATCH_SIZE - 1) // TTS_SEGMENT_BATCH_SIZE
 
-        for seg in batch_segments:
+        logging.info(f"🔄 [{speaker}] Processing batch {batch_num}/{total_batches} ({len(batch_segments)} segments)")
+
+        for seg_idx, seg in enumerate(batch_segments, 1):
+            global_idx = i + seg_idx
             start = seg["start"]
             end = seg["end"]
             duration = end - start
@@ -228,9 +239,12 @@ def generate_tts_for_speaker(
             text = seg.get("translated_text", "").strip()
             if not text:
                 logging.warning(
-                    f"Empty translated text for segment {start}-{end}, skipping"
+                    f"⚠️  [{speaker}] Skipping segment {global_idx}/{total_segments}: empty text"
                 )
                 continue
+
+            # Progress logging
+            logging.info(f"🎵 [{speaker}] Generating TTS {global_idx}/{total_segments}: '{text[:50]}{'...' if len(text) > 50 else ''}' ({duration:.2f}s)")
 
             # Generate TTS audio using edge-tts
             success = asyncio.run(
@@ -242,12 +256,15 @@ def generate_tts_for_speaker(
                     volume="+0%",  # Normal volume
                     pitch="+0Hz",  # Normal pitch
                     speed=speed,  # Use speed parameter
+                    max_speed_factor=max_speed_factor,
                 )
             )
 
             if not success:
-                logging.error(f"Failed to generate TTS for segment {start}-{end}")
+                logging.error(f"❌ [{speaker}] Failed to generate TTS for segment {global_idx}/{total_segments} ({start:.1f}-{end:.1f}s)")
                 continue
+
+            logging.info(f"✅ [{speaker}] Completed segment {global_idx}/{total_segments}: {os.path.basename(output_wav)}")
 
             # Load the generated audio
             try:
