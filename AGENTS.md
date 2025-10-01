@@ -64,7 +64,7 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
     "speaker_embeddings": {"SPEAKER_00": [0.1, 0.2, ...]}
   }
   ```
-- **Notes**: Reuses Whisper + Pyannote; embeddings for RVC voice cloning (download model per unique speaker). Falls back to full audio track when audio separation is skipped.
+- **Notes**: Reuses Whisper + Pyannote; embeddings for RVC voice cloning (download model per unique speaker). Falls back to full audio track when audio separation is skipped. Can disable VAD processing with --disable-vad flag for faster transcription.
 
 ### 4. emotion (Optional)
 - **Purpose**: Detect emotions in segments for expressive TTS.

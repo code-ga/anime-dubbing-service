@@ -130,6 +130,12 @@ def main():
         default=float("inf"),
         help="Maximum speed factor allowed for TTS audio adjustment (default: infinity)"
     )
+    parser.add_argument(
+        "--disable-vad",
+        action="store_true",
+        default=False,
+        help="Disable Voice Activity Detection (VAD) in transcription for faster processing (default: False)"
+    )
     args = parser.parse_args()
 
     # Update logger level based on argument
@@ -357,6 +363,8 @@ def main():
                         stage_data = func(tmp_path, metadata_path, inputs_data, max_speed_factor=args.max_speed_factor)
                     elif stage == "generate_tts":
                         stage_data = func(tmp_path, metadata_path, inputs_data, tts_method=args.tts_method, max_speed_factor=args.max_speed_factor)
+                    elif stage == "transcribe":
+                        stage_data = func(tmp_path, metadata_path, inputs_data, language=args.target_lang, disable_vad=args.disable_vad)
                     else:
                         stage_data = func(tmp_path, metadata_path, inputs_data)
 

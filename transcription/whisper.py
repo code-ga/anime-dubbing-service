@@ -89,7 +89,7 @@ class WhisperResult(TypedDict):
 
 
 def apply_vad(
-    audio_path: str, threshold: float = 0.5, min_speech_duration: float = 0.1
+    audio_path: str, threshold: float = 0.5, min_speech_duration: float = 0.25
 ) -> List[dict[str, float]]:
     """
     Apply Silero VAD to audio file to get speech segments.
@@ -101,7 +101,7 @@ def apply_vad(
     threshold : float
         Speech detection threshold (default: 0.5)
     min_speech_duration : float
-        Minimum speech duration in seconds (default: 0.1)
+        Minimum speech duration in seconds (default: 0.25)
 
     Returns
     -------
@@ -126,7 +126,7 @@ def apply_vad(
     return speech_timestamps
 
 
-def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
+def transcript(tmp_path, metadata_path, inputs_data, language="ja", disable_vad=False):
     """
     Transcribe an audio file using Whisper and assign speakers to words using Pyannote.
 
@@ -155,20 +155,24 @@ def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
         audioFilePath = os.path.join(tmp_path, convert_data.get("full_wav_path", "full.wav"))
         print(f"Using full audio (audio separation skipped): {audioFilePath}")
 
-    # Apply VAD to get speech segments
-    print("Applying VAD to detect speech segments...")
-    speech_segments = apply_vad(audioFilePath, threshold=0.5, min_speech_duration=0.1)
+    # Apply VAD to get speech segments (unless disabled)
+    if disable_vad:
+        print("VAD disabled, using full audio for transcription...")
+        speech_segments = [{"start": 0, "end": None}]  # Use entire audio
+    else:
+        print("Applying VAD to detect speech segments...")
+        speech_segments = apply_vad(audioFilePath, threshold=0.5, min_speech_duration=0.1)
 
-    if not speech_segments:
-        print("No speech segments detected by VAD")
-        return {
-            "segments": [],
-            "language": language,
-            "text": "",
-            "speaker_embeddings": {},
-        }
+        if not speech_segments:
+            print("No speech segments detected by VAD")
+            return {
+                "segments": [],
+                "language": language,
+                "text": "",
+                "speaker_embeddings": {},
+            }
 
-    print(f"Found {len(speech_segments)} speech segments")
+        print(f"Found {len(speech_segments)} speech segments")
 
     # Load full audio for segment extraction
     audio, sr = torchaudio.load(audioFilePath)
@@ -188,13 +192,22 @@ def transcript(tmp_path, metadata_path, inputs_data, language="ja"):
         tqdm(speech_segments, desc="Processing speech segments")
     ):
         start_time = segment["start"]
-        end_time = segment["end"]
-        print(
-            f"Processing segment {i+1}/{len(speech_segments)}: {start_time:.2f}s to {end_time:.2f}s"
-        )
+        end_time = segment["end"] if segment["end"] is not None else None
+        if end_time is not None:
+            print(
+                f"Processing segment {i+1}/{len(speech_segments)}: {start_time:.2f}s to {end_time:.2f}s"
+            )
+        else:
+            print(
+                f"Processing segment {i+1}/{len(speech_segments)}: {start_time:.2f}s to end of audio"
+            )
+
         # Extract segment audio
         start_sample = int(start_time * sr)
-        end_sample = int(end_time * sr)
+        if end_time is not None:
+            end_sample = int(end_time * sr)
+        else:
+            end_sample = audio.shape[1]  # Use entire audio length
         segment_audio = audio[:, start_sample:end_sample]
 
         # Save temporary audio file for Whisper
