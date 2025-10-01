@@ -209,6 +209,7 @@ output.mp4             # Output dubbed video file
 --keep-tmp            # Preserve temporary files
 --tmp-dir ./custom_tmp # Custom temporary directory
 --skip-audio-separation # Skip audio separation for faster processing
+--burn-subtitles      # Burn subtitles into the final video (default: False)
 
 # SRT Export Options
 --export-srt                    # Enable SRT subtitle export (exports both translated and original subtitles by default)
@@ -217,6 +218,11 @@ output.mp4             # Output dubbed video file
 --srt-include-speaker           # Include speaker information in subtitles
 --srt-include-original          # Include original text alongside translation
 --srt-title "Anime Subtitles"   # Optional title for SRT file
+
+# Subtitle Burning Options
+--subtitle-font-size SIZE - Font size for burned subtitles (default: 24)
+--subtitle-color COLOR - Color for subtitles (default: white)
+--subtitle-position POS - Position for subtitles (bottom, top, middle; default: bottom)
 ```
 
 ### Environment Variables
@@ -266,6 +272,12 @@ python main.py input.mp4 output.mp4 \
   --srt-text-field translated_text \
   --srt-include-speaker \
   --srt-title "My Anime Dubbed Subtitles"
+
+# With burned subtitles
+python main.py input.mp4 output.mp4 \
+  --target_lang en \
+  --burn-subtitles \
+  --subtitle-font-size 28
 
 # Skip audio separation for faster processing (transcription-only recommended)
 python main.py input.mp4 output.mp4 \
@@ -414,6 +426,7 @@ python main.py input.mp4 output.mp4 --transcription-only [OPTIONS]
 - `--target-lang TEXT`: Target language for subtitles (uses translated_text if set, otherwise original_text)
 - `--export-srt`: Automatically generates SRT files alongside burned subtitles
 - `--export-srt-directory TEXT`: Custom directory for SRT files (default: ./srt)
+- `--burn-subtitles`: Can be used in transcription-only mode to add subtitles to the original video
 
 ### Usage Examples
 

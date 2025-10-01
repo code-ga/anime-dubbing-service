@@ -264,6 +264,11 @@ class XTTSGenerator:
         except (TypeError, ValueError):
             speed = 1.0
 
+        # Clamp speed to maximum of 2.0x
+        if speed > 2.0:
+            self.logger.logger.warning(f"Speed factor {speed} exceeds maximum limit of 2.0, clamping to 2.0")
+            speed = 2.0
+
         # Apply emotion-based adjustments if available
         if emotion_data and emotion_support:
             speaker_emotions = emotion_data.get("overall_emotions", {}).get(speaker, {})

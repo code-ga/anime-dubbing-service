@@ -9,3 +9,6 @@ pydub
 librosa
 
 coqui-tts
+orpheus-speech
+vllm==0.7.3
+flash-attn

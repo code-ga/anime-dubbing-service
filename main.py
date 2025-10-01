@@ -12,9 +12,10 @@ import yaml
 from dotenv import load_dotenv
 from utils.logger import get_logger
 from utils.metadata import (create_metadata, is_complete, load_metadata,
-                             load_previous_result, set_overall_error,
-                             update_failure, update_success)
+                              load_previous_result, set_overall_error,
+                              update_failure, update_success)
 from utils.srt_export import export_segments_to_srt, export_translation_to_srt
+from utils.burn_subtitles import burn_subtitles
 
 load_dotenv("./.env")
 
@@ -116,6 +117,12 @@ def main():
         default="bottom",
         choices=["bottom", "top", "middle"],
         help="Position for burned-in subtitles (default: bottom)"
+    )
+    parser.add_argument(
+        "--burn-subtitles",
+        action="store_true",
+        default=False,
+        help="Burn subtitles into the final video (default: False)"
     )
     args = parser.parse_args()
 
@@ -296,10 +303,13 @@ def main():
                             tmp_path, metadata_path, inputs_data, input_file=input_abs
                         )
                     elif stage == "translate":
-                        # Determine appropriate text field for SRT export in transcription-only mode
+                        # Determine appropriate text field for SRT export
                         srt_text_field = args.srt_text_field
-                        if args.transcription_only:
-                            # In transcription-only mode, use translated_text if target_lang is set, otherwise original_text
+                        # Auto-enable export_srt if burn_subtitles is True
+                        export_srt = args.export_srt or args.burn_subtitles
+
+                        if args.transcription_only or args.burn_subtitles:
+                            # In transcription-only mode or when burning subtitles, use translated_text if target_lang is set, otherwise original_text
                             if args.target_lang and args.target_lang != "en":  # Assuming "en" might be default but no translation
                                 srt_text_field = "translated_text"
                             else:
@@ -311,7 +321,7 @@ def main():
                             inputs_data,
                             target_lang=args.target_lang,
                             singing_model=args.singing_model,
-                            export_srt=args.export_srt,
+                            export_srt=export_srt,
                             srt_text_field=srt_text_field,
                             srt_include_speaker=args.srt_include_speaker,
                             srt_include_original=args.srt_include_original,
@@ -358,6 +368,62 @@ def main():
                             logger.log_tts_method(stage_data["tts_method"])
                         if "total_duration" in stage_data:
                             logger.logger.info(f"  ⏱️  Stage output duration: {stage_data['total_duration']:.2f} seconds")
+
+                    # Handle burn_subtitles after mux_video stage
+                    if stage == "mux_video" and args.burn_subtitles:
+                        logger.logger.info("🔥 Burning subtitles into video as requested...")
+
+                        # Determine appropriate text field for subtitles
+                        subtitle_text_field = "translated_text" if args.target_lang and args.target_lang != "en" else "original_text"
+
+                        # Find the SRT file from translate stage
+                        translate_data = load_previous_result(metadata_path, "translate")
+                        srt_file = None
+                        if translate_data and "srt_file" in translate_data:
+                            srt_file = translate_data["srt_file"]
+                        elif translate_data and "stage_data" in translate_data and "srt_file" in translate_data["stage_data"]:
+                            srt_file = translate_data["stage_data"]["srt_file"]
+
+                        if not srt_file:
+                            logger.logger.error("No SRT file found for subtitle burning")
+                            raise ValueError("No SRT file available for subtitle burning")
+
+                        srt_path = os.path.join(tmp_path, srt_file)
+                        if not os.path.exists(srt_path):
+                            logger.logger.error(f"SRT file not found: {srt_path}")
+                            raise FileNotFoundError(f"SRT file not found: {srt_path}")
+
+                        # Generate output path for subtitled video
+                        output_basename = os.path.basename(args.output_mp4)
+                        name, ext = os.path.splitext(output_basename)
+                        subtitled_output = os.path.join(os.path.dirname(args.output_mp4), f"{name}_subtitled{ext}")
+
+                        # Call burn_subtitles function
+                        burn_stage_data = None
+                        try:
+                            burn_stage_data = burn_subtitles(
+                                tmp_path=tmp_path,
+                                metadata_path=metadata_path,
+                                inputs_data={"translate": translate_data},
+                                original_video_path=args.input_mp4,
+                                output_file=subtitled_output,
+                                font_size=args.subtitle_font_size,
+                                color=args.subtitle_color,
+                                position=args.subtitle_position
+                            )
+
+                            # Update success with burn_subtitles data
+                            update_success(
+                                metadata_path, "burn_subtitles", start_time, None, stage_data=burn_stage_data
+                            )
+
+                            # Update the final output path to the subtitled version
+                            args.output_mp4 = subtitled_output
+                            logger.logger.info(f"✅ Subtitles burned successfully. Final output: {subtitled_output}")
+
+                        except Exception as burn_e:
+                            logger.log_error("burn_subtitles", burn_e, "subtitle burning")
+                            raise
 
                 except Exception as stage_e:
                     # Log error with context

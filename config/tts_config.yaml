@@ -46,10 +46,24 @@ tts_methods:
       device: "cuda"  # or "cpu"
       speaker_wav_duration: 6  # seconds to use from ref
       language: "auto"  # infer from target_lang
-      speed: 1.0
+      speed: 1.0  # Speed factor (1.0 = normal, max 2.0 = 2x speed)
       temperature: 0.7  # for variation/emotion
       emotion_support: true  # if optional stage active
       languages: ["en", "ja", "zh", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi"]
+
+  # Orpheus-TTS Configuration
+  orpheus:
+    name: "Orpheus-TTS"
+    description: "Advanced multilingual TTS with enhanced voice quality and emotion support"
+    enabled: true
+    config:
+      model_type: "finetuned"  # Options: "finetuned", "pretrained", "multilingual"
+      voice: "tara"  # Default voice name
+      device: "cuda"  # Requires GPU
+      emotion_tags: true  # Enable emotion tags in prompts
+      temperature: 0.7  # Generation temperature for variation
+      repetition_penalty: 1.1  # Repetition penalty
+      language_support: ["en", "ja", "zh", "ko", "es", "fr", "de", "it", "pt", "ru"]
 
 # Voice mapping for different speakers (optional)
 # Maps speaker IDs to specific TTS voices

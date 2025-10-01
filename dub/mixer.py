@@ -150,8 +150,8 @@ def mix_audio(tmp_path: str, metadata_path: str, inputs_data=None, **kwargs) -> 
             else:
                 speed_factor = len(tts_audio) / duration_ms
                 if (
-                    speed_factor <= 0 or speed_factor > 10
-                ):  # Cap extreme speeds to avoid artifacts
+                    speed_factor <= 0 or speed_factor > 2.0
+                ):  # Cap extreme speeds to avoid artifacts (max 2.0x speed)
                     tts_audio = AudioSegment.silent(duration=duration_ms)
                 else:
                     # Apply speed change - skip if no speedup needed or segment too short

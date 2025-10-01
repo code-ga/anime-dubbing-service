@@ -71,6 +71,26 @@ LANGUAGE_VOICE_MAP = {
 }
 
 
+def speed_to_rate(speed: float) -> str:
+    """
+    Convert speed factor to Edge-TTS rate string.
+
+    Args:
+        speed: Speed factor (1.0 = normal speed, 2.0 = 2x speed)
+
+    Returns:
+        Rate string for Edge-TTS (e.g., "+0%", "+100%")
+    """
+    # Clamp speed to maximum of 2.0x
+    if speed > 2.0:
+        logging.warning(f"Speed factor {speed} exceeds maximum limit of 2.0, clamping to 2.0")
+        speed = 2.0
+
+    # Convert speed to percentage (1.0 = 0%, 2.0 = 100%)
+    rate_percentage = int((speed - 1.0) * 100)
+    return f"+{rate_percentage}%"
+
+
 def get_voice_for_speaker(
     speaker: str, language: str = "en", gender_preference: str = "neutral"
 ) -> str:
@@ -113,6 +133,7 @@ async def generate_tts_audio_async(
     rate: str = "+0%",
     volume: str = "+0%",
     pitch: str = "+0Hz",
+    speed: float = 1.0,
 ) -> bool:
     """
     Generate TTS audio asynchronously using edge-tts.
@@ -124,11 +145,16 @@ async def generate_tts_audio_async(
         rate: Speaking rate adjustment (e.g., "+50%", "-20%")
         volume: Volume adjustment (e.g., "+10%", "-5%")
         pitch: Pitch adjustment (e.g., "+2Hz", "-1Hz")
+        speed: Speed factor (1.0 = normal, 2.0 = 2x speed)
 
     Returns:
         True if successful, False otherwise
     """
     try:
+        # Convert speed to rate if speed parameter is provided
+        if speed != 1.0:
+            rate = speed_to_rate(speed)
+
         # Create TTS communication object
         communicate = edge_tts.Communicate(
             text, voice, rate=rate, volume=volume, pitch=pitch
@@ -158,6 +184,7 @@ def generate_tts_for_speaker(
     target_sr: int,
     language: str = "en",
     gender_preference: str = "neutral",
+    speed: float = 1.0,
     **kwargs,
 ) -> List[Dict]:
     """
@@ -172,6 +199,7 @@ def generate_tts_for_speaker(
         target_sr: Target sample rate
         language: Target language for TTS
         gender_preference: Preferred gender for voice selection
+        speed: Speed factor (1.0 = normal, 2.0 = 2x speed)
         **kwargs: Additional arguments
 
     Returns:
@@ -210,9 +238,10 @@ def generate_tts_for_speaker(
                     text=text,
                     output_path=output_wav,
                     voice=voice,
-                    rate="+0%",  # Normal speed
+                    rate="+0%",  # Normal speed (will be overridden by speed parameter)
                     volume="+0%",  # Normal volume
                     pitch="+0Hz",  # Normal pitch
+                    speed=speed,  # Use speed parameter
                 )
             )
 

@@ -177,13 +177,15 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
       {"path": "tts/seg1.wav", "start": 0.0, "end": 5.0, "speaker": "SPEAKER_00", "duration": 4.8}
     ],
     "xtts_models_used": {"SPEAKER_00": "xtts_v2"},
+    "orpheus_models_used": {"SPEAKER_00": "canopyai/Orpheus-3B-0.1-ft"},
     "tts_method": "xtts",
     "total_duration": 120.5,
     "tts_params": {"speed": 1.0, "language": "en", "temperature": 0.7}
   }
   ```
-- **Notes**: Primary engine now Coqui XTTS-v2 for multilingual cloning; falls back to F5/Edge/RVC via config. Uses ref_audio (3-10s sliced from build_refs) and ref_text for conditioning. Download XTTS-v2 (~1GB) on first run. Skip singing; emotion integration via temperature if active. Ensure ref clips >=3s for cloning quality.
+- **Notes**: Primary engine now Coqui XTTS-v2 for multilingual cloning; falls back to F5/Edge/RVC/Orpheus via config. Uses ref_audio (3-10s sliced from build_refs) and ref_text for conditioning. Download XTTS-v2 (~1GB) on first run. Skip singing; emotion integration via temperature if active. Ensure ref clips >=3s for cloning quality.
 - **XTTS-specific**: Voice cloning from speaker refs; multilingual output matches target_lang. Duration adjustment post-synthesis for mix sync.
+- **Orpheus-specific**: Advanced voice cloning with enhanced quality and emotion support. Requires GPU with CUDA. Falls back to XTTS if GPU unavailable. Supports emotion tags when emotion stage is active. Model variants: finetuned (default), pretrained, multilingual. Uses reference audio and text for voice conditioning.
 
 ### 9. mix_audio
 - **Purpose**: Mix TTS with original instrumental + music preservation.
@@ -216,9 +218,9 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 - **Notes**: No re-encode video.
 
 ### 11. burn_subtitles
-- **Purpose**: Burn subtitles directly into video using FFmpeg for transcription-only mode.
+- **Purpose**: Burn subtitles directly into video using FFmpeg. Now optional via --burn-subtitles flag (default: disabled); previously tied to --transcription-only.
 - **Module/Function**: `utils.burn_subtitles.burn_subtitles`
-- **Inputs**: [translate] (requires SRT file from export_srt).
+- **Inputs**: [mux_video] for final_video_path, and [export_srt] SRT (auto-triggered if needed).
 - **Outputs**: JSON with subtitled video path and burn parameters.
 - **JSON Schema**:
   ```json
@@ -235,11 +237,12 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
   }
   ```
 - **Command Line Integration**:
+  - `--burn-subtitles`: Enable subtitle burning (default: False; runs after mux_video)
   - `--transcription-only`: Enable transcription-only mode (skips dubbing stages)
   - `--subtitle-font-size`: Font size for burned-in subtitles (default: 24)
   - `--subtitle-color`: Color for subtitles (default: white)
   - `--subtitle-position`: Position for subtitles (bottom, top, middle; default: bottom)
-- **Notes**: Only runs in transcription-only mode. Burns subtitles from SRT file generated during translate stage. Preserves original audio without dubbing. Requires FFmpeg with subtitle filter support. Automatically determines text field (translated_text if target language set, otherwise original_text).
+- **Notes**: Disabled by default. When enabled, auto-generates SRT from translate stage using translated_text (if target_lang set) or original_text. Integrates with both dubbing and transcription-only pipelines. Outputs subtitled_video_path (e.g., output_subtitled.mp4) and updates final output path.
 
 ## Extending the Pipeline
 To add a new stage (e.g., "post_process"):
