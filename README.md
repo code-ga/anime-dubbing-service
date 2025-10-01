@@ -63,6 +63,9 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
     # For GPU-accelerated processing (NVIDIA GPU with CUDA required)
     uv pip install -e .[gpu]
 
+    # For orpheus-speech
+    uv pip install orpheus-speech # BEta
+
     # Alternative: Install specific extras
     uv pip install -e .[cpu]  # Explicitly install CPU version
     ```
