@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "audio-separator[cpu]>=0.36.1",
+    "audio-separator[gpu]>=0.36.1",
     "coqui-tts>=0.27.1",
     "ctranslate2==4.4.0",
     "edge-tts>=7.2.3",
@@ -16,12 +16,10 @@ dependencies = [
     "openai-whisper>=20250625",
     "pyannote-audio>=3.3.2",
     "pydub>=0.25.1",
+    "pyinstaller>=6.16.0",
     "python-dotenv>=1.1.1",
     "silero-vad>=6.0.0",
     "soundfile>=0.13.1",
-    "torch>=2.8.0",
-    "torchaudio>=2.8.0",
-    "torchvision>=0.23.0",
     "tqdm>=4.65.0",
     # Base installation uses CPU versions for maximum compatibility
     "transformers>=4.56.0",
@@ -36,18 +34,6 @@ gpu = [
 cpu = [
     "audio-separator[cpu]>=0.36.1",
     # CPU extras ensure CPU-only versions
-]
-
-[tool.uv.sources]
-# Base installation uses CPU versions for maximum compatibility
-torch = [
-  { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-torchvision = [
-  { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-torchaudio = [
-  { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]

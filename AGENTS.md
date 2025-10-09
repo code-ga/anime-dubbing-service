@@ -6,7 +6,33 @@ This file documents each stage (agent) in the dubbing pipeline. Each agent is a 
 - **Inputs**: List of prior stages to load JSON from (via `load_previous_result`).
 - **Outputs**: JSON saved to `tmp/{stage}_results/{stage}.json`, tracked in `metadata.json`.
 - **Dependencies**: Reuses existing functions; new agents implement similar pattern.
+- **Runtime Installation**: Heavy dependencies (torch, audio-separator) are installed automatically at runtime via `lazy_installer.py`.
 - **Adding New Agents**: 1. Add to `config/stages.yaml`. 2. Implement `{module}.{function}(tmp_path, metadata_path, **kwargs)`. 3. Define JSON schema here. 4. Update README.
+
+## Runtime Dependency Management
+
+The pipeline uses a **lazy dependency installer** system that installs heavy ML packages at runtime:
+
+### Key Features
+- **Environment Detection**: Automatically detects CPU, CUDA (12.6/12.8/12.9), or ROCm hardware
+- **Smart Installation**: Uses `uv` (preferred) or `pip` to install correct package variants
+- **Caching**: Saves packages in `deps/` directory for reuse across runs
+- **Minimal Build Impact**: No heavy dependencies included in built executables
+
+### Supported Package Variants
+| Environment | Torch Package | Audio-Separator Package |
+|-------------|---------------|-------------------------|
+| **CPU** | `torch` (CPU-only) | `audio-separator` |
+| **CUDA 12.6** | `torch[cuda126]` | `audio-separator[gpu]` |
+| **CUDA 12.8** | `torch[cuda128]` | `audio-separator[gpu]` |
+| **CUDA 12.9** | `torch[cuda129]` | `audio-separator[gpu]` |
+| **ROCm** | `torch[rocm6.0]` | `audio-separator` |
+
+### Integration Points
+- **Main Entry**: `lazy_installer.ensure_dependencies()` called before pipeline stages
+- **Path Management**: `deps/` directory added to `sys.path` for package discovery
+- **Build Process**: Single universal binary works on all hardware configurations
+- **Runtime Detection**: Automatically installs correct dependencies for detected hardware
 
 ## Agents
 
@@ -252,3 +278,9 @@ To add a new stage (e.g., "post_process"):
 3. Define schema in this file.
 4. Update downstream inputs if needed.
 5. Run: Pipeline auto-includes via config.
+
+### Runtime Dependency Notes for New Stages
+- **Heavy Dependencies**: If your new stage requires additional ML packages, add them to `lazy_installer.py`
+- **Environment Detection**: The lazy installer handles CPU/CUDA/ROCm detection automatically
+- **Build Integration**: No changes needed to build scripts - runtime installer handles everything
+- **Testing**: Test your stage on different hardware configurations (CPU, CUDA, ROCm)

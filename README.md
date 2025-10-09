@@ -50,25 +50,19 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd anime-dubbing-service
-   ```
-
-2. **Install dependencies**
     ```bash
-    # For CPU-only processing (default - works on any computer)
-    uv pip install -e .
-
-    # For GPU-accelerated processing (NVIDIA GPU with CUDA required)
-    uv pip install -e .[gpu]
-
-    # For orpheus-speech
-    uv pip install orpheus-speech # BEta
-
-    # Alternative: Install specific extras
-    uv pip install -e .[cpu]  # Explicitly install CPU version
+    git clone <repository-url>
+    cd anime-dubbing-service
     ```
+
+2. **Install base dependencies**
+     ```bash
+     # Install core dependencies (works on any computer)
+     uv pip install -e .
+
+     # For orpheus-speech (optional)
+     uv pip install orpheus-speech # Beta
+     ```
 
 3. **Set up environment variables**
    Create a `.env` file in the project root:
@@ -89,9 +83,51 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
    ```
 
 5. **Test installation**
-   ```bash
-   python -c "import edge_tts, openai, yaml; print('✅ Dependencies installed successfully')"
-   ```
+    ```bash
+    python -c "import edge_tts, openai, yaml; print('✅ Dependencies installed successfully')"
+    ```
+
+### Runtime Dependency Installation
+
+**Important**: This project uses a **lazy dependency installer** system that installs heavy packages (`torch`, `audio-separator`) at runtime rather than build time. This approach:
+
+- ✅ **Reduces binary size** - No large ML libraries in the executable
+- ✅ **Improves compatibility** - Works with different CUDA versions automatically
+- ✅ **Faster builds** - No need to install heavy packages during build
+- ✅ **Environment flexibility** - Automatically detects CPU/CUDA/ROCm at runtime
+
+#### How It Works
+1. **Environment Detection**: Automatically detects your hardware (CPU, CUDA 12.6/12.8/12.9, ROCm)
+2. **Smart Installation**: Installs the correct package variants using `uv` (preferred) or `pip`
+3. **Caching**: Saves packages in `deps/` directory for reuse across runs
+4. **Fallback Support**: Uses `pip` if `uv` is unavailable
+
+#### Runtime Behavior
+- **First run**: Takes 2-5 minutes longer to install dependencies
+- **Subsequent runs**: Uses cached packages from `deps/` directory
+- **Automatic detection**: No manual configuration needed
+- **Clear cache**: Delete `deps/` directory to force reinstallation
+
+#### Supported Environments
+| Environment | Detection | Installation Method |
+|-------------|-----------|-------------------|
+| **CPU** | Default | `torch` (CPU-only) + `audio-separator` |
+| **CUDA 12.6** | nvidia-smi | `torch[cuda126]` + `audio-separator[gpu]` |
+| **CUDA 12.8** | nvidia-smi | `torch[cuda128]` + `audio-separator[gpu]` |
+| **CUDA 12.9** | nvidia-smi | `torch[cuda129]` + `audio-separator[gpu]` |
+| **ROCm** | rocm-smi | `torch[rocm]` + `audio-separator` |
+
+#### Manual Cache Management
+```bash
+# Clear dependency cache (force reinstall)
+rm -rf deps/
+
+# Check what's cached
+ls -la deps/
+
+# Verify installation worked
+python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+```
 
 ### Hardware Requirements
 
@@ -1008,43 +1044,45 @@ pytest tests/test_music_dubbing.py
 ### Installation Commands
 
 ```bash
-# 🚀 Quick installation (CPU - works on any computer)
+# 🚀 Quick installation (works on any computer - dependencies installed at runtime)
 uv pip install -e .
-
-# 🖥️ CPU installation with explicit CPU audio separator
-uv pip install -e .[cpu]
-
-# 🚀 GPU installation (requires NVIDIA GPU with CUDA)
-uv pip install -e .[gpu]
 
 # 📦 Traditional pip installation (if you prefer pip over uv)
 pip install -e .
 
-# 🔧 Development installation with all optional dependencies
-uv pip install -e .[cpu,gpu]
+# 🔧 Development installation
+uv pip install -e .[dev]
 
-# 📋 Legacy requirements-based installation
-pip install -r requirements-cpu.txt  # CPU version
-pip install -r requirements-gpu.txt  # GPU version (requires NVIDIA GPU)
+# 📋 Optional: Install additional TTS engines
+uv pip install orpheus-speech  # Beta feature
 ```
-And then install pytorch following this link https://pytorch.org/get-started/locally/
+
+**Note**: Heavy dependencies (`torch`, `audio-separator`) are now installed automatically at runtime based on your hardware. No manual PyTorch installation required!
+
+### Universal Binary
+The build process now creates a single universal executable that works on any hardware configuration. The runtime installer automatically detects your environment and installs the appropriate dependencies:
+- **CPU-only systems**: Installs CPU versions of PyTorch and audio-separator
+- **CUDA-enabled GPUs**: Installs GPU-accelerated versions for your specific CUDA version (12.6/12.8/12.9)
+- **ROCm systems**: Installs ROCm-compatible versions for AMD GPUs
 ### Installation Tips
 
-- **First-time setup**: Run `uv pip install -e .` - this works on 99% of computers
-- **GPU users**: Add `[gpu]` for 2-3x faster audio processing if you have NVIDIA GPU
-- **PyTorch Note**: Base installation uses CPU PyTorch; GPU PyTorch may already be installed in some environments
-- **uv vs pip**: `uv` is faster and recommended, but regular `pip` works too
-- **Apple Silicon**: Use CPU installation - GPU support requires additional setup
+- **First-time setup**: Run `uv pip install -e .` - works on 99% of computers
+- **Runtime installation**: Heavy dependencies are installed automatically on first run
+- **No GPU setup needed**: Runtime detection works for CPU, CUDA (12.6/12.8/12.9), and ROCm
+- **uv vs pip**: `uv` is faster and recommended for both build and runtime installation
+- **Apple Silicon**: Works out of the box - runtime will install CPU versions automatically
 
 ### Model Requirements
 
-The following models are automatically downloaded on first use:
+The following models are automatically downloaded at runtime:
 - **Whisper models**: `base`, `small`, `medium`, `large` (depending on config)
 - **Pyannote models**: Speaker diarization models (requires Hugging Face token)
 - **F5-TTS models**: Voice cloning models (if using F5-TTS)
-- **Demucs models**: Audio separation models
+- **Demucs models**: Audio separation models (part of audio-separator)
 
 **Total model size**: ~5-10GB depending on selected models
+
+**Runtime downloads**: Models are downloaded when first needed during processing, not during installation.
 
 ## ❓ FAQ
 
@@ -1070,8 +1108,14 @@ A: Ensure you have 3-5 seconds of clear speech per character. The system automat
 **Q: Can I add custom voices or languages?**
 A: Yes! You can modify `config/tts_config.yaml` to add new Edge-TTS voices or configure F5-TTS for additional languages.
 
-**Q: Why does PyTorch show CUDA version even with CPU installation?**
-A: PyTorch CUDA/CPU versions are often pre-installed in development environments. The base installation uses CPU audio-separator and works on any computer. For GPU acceleration, use `uv pip install -e .[gpu]` which includes GPU audio-separator for 2-3x faster processing.
+**Q: Why does the first run take longer than expected?**
+A: The lazy installer downloads and installs heavy dependencies (PyTorch, audio-separator) on first run. This takes 2-5 minutes but subsequent runs use cached packages from `deps/` directory.
+
+**Q: Can I still use GPU acceleration?**
+A: Yes! The runtime installer automatically detects CUDA (12.6/12.8/12.9) or ROCm and installs GPU versions. No manual configuration needed.
+
+**Q: How do I clear the dependency cache?**
+A: Delete the `deps/` directory: `rm -rf deps/`. The next run will reinstall dependencies based on your current hardware.
 
 ### Troubleshooting Questions
 
@@ -1150,15 +1194,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ### One-Command Setup
 ```bash
-# Quick setup (CPU - works on any computer)
+# Quick setup (works on any computer - CPU, CUDA, or ROCm)
 git clone <repo> && cd anime-dubbing-service
 uv pip install -e .
 echo "HUGGINGFACE_TOKEN=your_token" >> .env
 
-# GPU setup (if you have NVIDIA GPU)
-git clone <repo> && cd anime-dubbing-service
-uv pip install -e .[gpu]
-echo "HUGGINGFACE_TOKEN=your_token" >> .env
+# Runtime installs dependencies automatically based on your hardware
 ```
 
 ### Most Common Commands

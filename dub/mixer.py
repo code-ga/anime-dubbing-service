@@ -58,7 +58,7 @@ def mix_audio(
     tmp_path: str,
     metadata_path: str,
     inputs_data=None,
-    max_speed_factor: float = 2.0,
+    max_speed_factor: float = float("inf"),
     **kwargs,
 ) -> dict:
     """
@@ -68,7 +68,10 @@ def mix_audio(
     """
 
     # Extract crossfade_duration from kwargs with default value and ensure it's a float
-    crossfade_duration = float(kwargs.get("crossfade_duration", 0.1))
+    crossfade_duration = float(kwargs.get("crossfade_duration", 0.08))  # seconds
+    if crossfade_duration < 0:
+        crossfade_duration = 0.0
+
 
     # Load audio based on whether separation was performed
     separate_data = inputs_data.get("separate_audio") if inputs_data else None

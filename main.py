@@ -12,10 +12,14 @@ import yaml
 from dotenv import load_dotenv
 from utils.logger import get_logger
 from utils.metadata import (create_metadata, is_complete, load_metadata,
-                              load_previous_result, set_overall_error,
-                              update_failure, update_success)
+                               load_previous_result, set_overall_error,
+                               update_failure, update_success)
 from utils.srt_export import export_segments_to_srt, export_translation_to_srt
 from utils.burn_subtitles import burn_subtitles
+
+# Ensure heavy dependencies are installed at runtime
+from lazy_installer import ensure_dependencies
+ensure_dependencies()
 
 load_dotenv("./.env")
 
