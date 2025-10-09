@@ -50,15 +50,15 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
 ### Installation
 
 1. **Clone the repository**
-    ```bash
-    git clone <repository-url>
-    cd anime-dubbing-service
-    ```
+   ```bash
+   git clone https://github.com/code-ga/anime-dubbing-service
+   cd anime-dubbing-service
+   ```
 
-2. **Install base dependencies**
-     ```bash
-     # Install core dependencies (works on any computer)
-     uv pip install -e .
+2. **Install dependencies**
+    ```bash
+    # For CPU-only processing (default - works on any computer)
+    uv pip install -e .
 
      # For orpheus-speech (optional)
      uv pip install orpheus-speech # Beta
@@ -70,11 +70,11 @@ A comprehensive, automated pipeline for dubbing anime videos into target languag
    # Required: OpenAI API key for translation
    OPENAI_API_KEY=anything # We use ai from hackclub
 
-   # Required: Hugging Face token for Pyannote models
-   HUGGINGFACE_TOKEN=your_huggingface_token_here
+   # Required: Hugging Face token for Pyannote models we using this model https://huggingface.co/pyannote/speaker-diarization-3.1 so please fill the form submit and then leave your token here
+   HUGGINGFACE_TOKEN=your_huggingface_token_here 
 
    # Optional: Custom temporary directory
-   TMP_DIR=./tmp # specify with argument
+   TMP_DIR=./tmp # specify with argument, highly recommended using --tmp-dir, this feature will be remove
    ```
 
 4. **Verify FFmpeg installation**
@@ -173,7 +173,7 @@ The service supports two powerful TTS engines, each with unique advantages:
 - **Languages**: 12 languages including Arabic, Hindi, Russian
 - **Quality**: Consistent natural voices, no voice cloning setup required
 
-### Configuration Files
+### Configuration Files ( You can skip this because the config is optimized )
 
 #### 1. Pipeline Configuration (`config/stages.yaml`)
 ```yaml
@@ -186,7 +186,7 @@ stages:
     tts_method: "edge_tts"  # Options: "f5", "edge_tts"
 ```
 
-#### 2. TTS Settings (`config/tts_config.yaml`)
+#### 2. TTS Settings (`config/tts_config.yaml`) ( same as above, this is optimized )
 ```yaml
 # Default TTS method
 default_tts_method: "edge_tts" #Don't change because currently f5-tts is unavailable
@@ -296,6 +296,9 @@ python main.py input.mp4 output.mp4 --target_lang ja --music_threshold 0.7
 
 # Using specific TTS method
 python main.py input.mp4 output.mp4 --tts-method edge_tts --target_lang en
+
+# Add for fun
+python main.py samples/test.mp4 dubbing.mp4 --tmp-dir .\tmp\ --target_lang en --keep-tmp  --export-srt # this use xtts to have clear voice please use edge-tts method
 ```
 
 ### Advanced Usage
