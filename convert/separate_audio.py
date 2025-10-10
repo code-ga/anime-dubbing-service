@@ -7,7 +7,15 @@ import torch
 
 
 def separate(tmp_path, metadata_path, inputs_data, **kwargs) -> dict:
-    full_wav_path = inputs_data["convert_mp4_to_wav"]["full_wav_path"]
+    # Handle case where previous stage failed or was skipped
+    if inputs_data.get("convert_mp4_to_wav") is None:
+        raise ValueError("convert_mp4_to_wav stage did not complete successfully or was skipped")
+
+    convert_data = inputs_data["convert_mp4_to_wav"]
+    if not isinstance(convert_data, dict) or "full_wav_path" not in convert_data:
+        raise ValueError("convert_mp4_to_wav stage did not return valid data structure")
+
+    full_wav_path = convert_data["full_wav_path"]
     audio_path = os.path.join(tmp_path, full_wav_path)
     output_dir = tmp_path
 

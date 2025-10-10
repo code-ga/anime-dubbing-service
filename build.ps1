@@ -22,7 +22,7 @@ function Clean-PreviousBuilds {
     if (Test-Path $BuildDir) { Remove-Item -Recurse -Force $BuildDir }
 }
 
-# Heavy dependencies (torch, audio-separator) are now installed at runtime
+# Heavy dependencies (torch, audio-separator, ML packages, utilities) are now installed at runtime for smaller binary size
 
 function Build-App {
     param(
@@ -36,10 +36,51 @@ function Build-App {
         --name $Name `
         --distpath $DistDir `
         --workpath $BuildDir `
+        --add-data "config;config" `
+        --add-data ".env;.env" `
+        --hidden-import "convert" `
+        --hidden-import "convert.mp4_wav" `
+        --hidden-import "convert.separate_audio" `
+        --hidden-import "transcription" `
+        --hidden-import "transcription.whisper" `
+        --hidden-import "transcription.emotion" `
+        --hidden-import "translate" `
+        --hidden-import "translate.openAi" `
+        --hidden-import "tts" `
+        --hidden-import "tts.orchestrator" `
+        --hidden-import "tts.edge_tts" `
+        --hidden-import "tts.F5" `
+        --hidden-import "tts.xtts" `
+        --hidden-import "tts.utils" `
+        --hidden-import "tts.config" `
+        --hidden-import "dub" `
+        --hidden-import "dub.mixer" `
+        --hidden-import "utils" `
+        --hidden-import "utils.logger" `
+        --hidden-import "utils.metadata" `
+        --hidden-import "utils.srt_export" `
+        --hidden-import "utils.burn_subtitles" `
         --exclude-module "torch" `
         --exclude-module "torchvision" `
         --exclude-module "torchaudio" `
         --exclude-module "audio_separator" `
+        --exclude-module "openai-whisper" `
+        --exclude-module "whisper" `
+        --exclude-module "coqui-tts" `
+        --exclude-module "f5-tts" `
+        --exclude-module "pyannote-audio" `
+        --exclude-module "pyannote" `
+        --exclude-module "transformers" `
+        --exclude-module "vocos" `
+        --exclude-module "silero_vad" `
+        --exclude-module "huggingface_hub" `
+        --exclude-module "edge_tts" `
+        --exclude-module "coqui-tts" `
+        --exclude-module "silero-vad" `
+        --exclude-module "openai" `
+        --exclude-module "pydub" `
+        --exclude-module "soundfile" `
+        --exclude-module "tqdm" `
         $EntryFile
 }
 
@@ -60,7 +101,7 @@ if (-not (Test-Path $DistDir)) {
 # ---- UNIVERSAL BUILD ----
 Write-Host "`nBuilding universal version..." -ForegroundColor Green
 Clean-PreviousBuilds
-# Heavy dependencies (torch, audio-separator) are now installed at runtime based on detected environment
+# Heavy dependencies (torch, audio-separator, ML packages, utilities) are now installed at runtime based on detected environment for smaller binary size
 Build-App -Name "$AppName" -TorchPath ""
 Write-Host "Universal build complete: $DistDir\$AppName.exe" -ForegroundColor Green
 
@@ -77,4 +118,4 @@ if (Has-GPU) {
 
 Write-Host "`nBuild completed successfully!"
 Write-Host "  Universal exe: $DistDir\$AppName.exe"
-Write-Host "`nRuntime will automatically detect and install appropriate dependencies (CPU/CUDA/ROCm)." -ForegroundColor Green
+Write-Host "`nRuntime will automatically detect and install appropriate dependencies (CPU/CUDA/ROCm) for smaller binary size." -ForegroundColor Green

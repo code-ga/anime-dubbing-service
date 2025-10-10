@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from lazy_installer import ensure_dependencies, clear_cache
+ensure_dependencies()
 import argparse
 import importlib
 import json
@@ -18,10 +20,15 @@ from utils.srt_export import export_segments_to_srt, export_translation_to_srt
 from utils.burn_subtitles import burn_subtitles
 
 # Ensure heavy dependencies are installed at runtime
-from lazy_installer import ensure_dependencies
-ensure_dependencies()
 
-load_dotenv("./.env")
+
+# Load environment variables - handle both script and PyInstaller bundle paths
+script_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(script_dir, ".env")
+if not os.path.exists(env_path):
+    # Fallback to relative path for development
+    env_path = "./.env"
+load_dotenv(env_path)
 
 
 def main():
@@ -201,14 +208,17 @@ def main():
         if invalid:
             metadata["completed_stages"] = metadata["completed_stages"][:i]
             metadata["current_stage"] = stage
-            temp_path = metadata_path + ".tmp"
-            with open(temp_path, "w") as f:
-                json.dump(metadata, f, indent=4)
-            os.replace(temp_path, metadata_path)
+            # Direct write for step-by-step execution
+            # with open(metadata_path, "w") as f:
+            #     json.dump(metadata, f, indent=4)
             break
 
-    # Load stages config
-    config_path = os.path.join(".", "config", "stages.yaml")
+    # Load stages config - handle both script and PyInstaller bundle paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "config", "stages.yaml")
+    if not os.path.exists(config_path):
+        # Fallback to relative path for development
+        config_path = os.path.join(".", "config", "stages.yaml")
     if not os.path.exists(config_path):
         logger.log_error("config", FileNotFoundError(f"Stages config not found: {config_path}"))
         raise FileNotFoundError(f"Stages config not found: {config_path}")
@@ -248,20 +258,18 @@ def main():
             if stage_name not in metadata["stage_results"]:
                 logger.log_warning("prerequisites", f"Missing prerequisite stage '{stage_name}'. Resetting current_stage to '{stage_name}'.", "stage validation")
                 metadata["current_stage"] = stage_name
-                temp_path = metadata_path + ".tmp"
-                with open(temp_path, "w") as f:
-                    json.dump(metadata, f, indent=4)
-                os.replace(temp_path, metadata_path)
+                # Direct write for step-by-step execution
+                # with open(metadata_path, "w") as f:
+                #     json.dump(metadata, f, indent=4)
                 return i
             else:
                 json_path = metadata["stage_results"][stage_name]["json_path"]
                 if not os.path.exists(json_path):
                     logger.log_warning("prerequisites", f"Missing result file for stage '{stage_name}'. Resetting current_stage to '{stage_name}'.", "file validation")
                     metadata["current_stage"] = stage_name
-                    temp_path = metadata_path + ".tmp"
-                    with open(temp_path, "w") as f:
-                        json.dump(metadata, f, indent=4)
-                    os.replace(temp_path, metadata_path)
+                    # Direct write for step-by-step execution
+                    # with open(metadata_path, "w") as f:
+                    #     json.dump(metadata, f, indent=4)
                     return i
         return current_idx
 
@@ -283,10 +291,9 @@ def main():
 
                 # Set current_stage before processing to ensure error handling matches
                 metadata["current_stage"] = stage
-                temp_path = metadata_path + ".tmp"
-                with open(temp_path, "w") as f:
-                    json.dump(metadata, f, indent=4)
-                os.replace(temp_path, metadata_path)
+                # Direct write for step-by-step execution
+                # with open(metadata_path, "w") as f:
+                #     json.dump(metadata, f, indent=4)
 
                 # Log stage start
                 logger.log_stage_start(stage, stage_idx, len(stages))
@@ -468,6 +475,10 @@ def main():
         total_duration = logger.get_elapsed_time()
         logger.log_pipeline_completion(total_duration, success=True)
 
+        # Clear dependency cache after successful pipeline completion
+        logger.logger.info("🧹 Clearing dependency cache...")
+        clear_cache()
+
         if not args.keep_tmp:
             logger.logger.info("🧹 Cleaning up temporary files...")
             for item in os.listdir(tmp_path):
@@ -489,6 +500,10 @@ def main():
         # Log pipeline completion with failure
         total_duration = logger.get_elapsed_time()
         logger.log_pipeline_completion(total_duration, success=False)
+
+        # Clear dependency cache even on failure to free up space
+        logger.logger.info("🧹 Clearing dependency cache...")
+        clear_cache()
 
         logger.logger.error(f"💥 Pipeline failed: {e}")
         sys.exit(1)

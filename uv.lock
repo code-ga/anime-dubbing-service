@@ -154,7 +154,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "audio-separator", extra = ["gpu"] },
     { name = "coqui-tts" },
-    { name = "ctranslate2" },
     { name = "edge-tts" },
     { name = "f5-tts" },
     { name = "ffmpeg-python" },
@@ -191,7 +190,6 @@ requires-dist = [
     { name = "audio-separator", extras = ["gpu"], specifier = ">=0.36.1" },
     { name = "audio-separator", extras = ["gpu"], marker = "extra == 'gpu'", specifier = ">=0.36.1" },
     { name = "coqui-tts", specifier = ">=0.27.1" },
-    { name = "ctranslate2", specifier = "==4.4.0" },
     { name = "edge-tts", specifier = ">=7.2.3" },
     { name = "f5-tts", specifier = ">=1.1.9" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
@@ -762,22 +760,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e9/f8/68315f71c420382873a8b2bd47b0c3113213f51bf4e932d56c9aed659b80/coqui_tts_trainer-0.3.1.tar.gz", hash = "sha256:ca32abaf43febb4012a6a0c61e265b1635f91455acbce17fd34a2b5eae3af28c", size = 50264, upload-time = "2025-06-30T12:47:48.676Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/79/d08e2b3974448bbfede88d7d3c81b67896ccaf8ed77ef10d4ddb8e7d194f/coqui_tts_trainer-0.3.1-py3-none-any.whl", hash = "sha256:eba2449b1c7e6a1fb7454608595949dbe4c1a409bd0d23e1fe93163637600392", size = 57198, upload-time = "2025-06-30T12:47:47.097Z" },
-]
-
-[[package]]
-name = "ctranslate2"
-version = "4.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pyyaml" },
-    { name = "setuptools" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/17/1a13c984d98caf96f511455b2edf94fbbabba21750668f4ada139b537b7f/ctranslate2-4.4.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:aea8067e0c5ea44fa3fb89a359c5be735bf7c626efaee129358d0964a625f212", size = 1331503, upload-time = "2024-09-09T10:51:10.928Z" },
-    { url = "https://files.pythonhosted.org/packages/02/19/99ace6662e0b079db28904a67323c2be4e2f4bfe9ea1e61310d6d53f8c19/ctranslate2-4.4.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0658aa1cde18ddb30a1750561a65b3162669a4290ea90c560947cfea3a2dde34", size = 16321841, upload-time = "2024-09-09T10:51:12.878Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/dc/2fe22d425e6d3ce574155c0a37217ba53f64958a772e65cb58045fb6728c/ctranslate2-4.4.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1656fca5ed866596aea49f045ad7aeb1438ba4d9a56477ae29844672692d5e78", size = 37600163, upload-time = "2024-09-09T10:51:15.584Z" },
-    { url = "https://files.pythonhosted.org/packages/77/53/d95bac0fe66051bfe5693efe96189959651dbeb072590ca48199f346b562/ctranslate2-4.4.0-cp312-cp312-win_amd64.whl", hash = "sha256:3b39c69ecd2f3a71de37b0bcc911416d570c47e4456434a961846359df01b0ba", size = 19328235, upload-time = "2024-09-09T10:51:18.319Z" },
 ]
 
 [[package]]

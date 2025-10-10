@@ -26,9 +26,21 @@ class LazyInstaller:
     """Handles lazy installation of heavy dependencies at runtime."""
 
     def __init__(self):
-        self.deps_dir = Path("./deps")
+        # In PyInstaller exe, __file__ might not be available, so use cwd
+        try:
+            # Try to get the directory of the current script
+            current_dir = Path(__file__).parent
+        except (NameError, AttributeError):
+            # In exe or when __file__ is not available, use current working directory
+            current_dir = Path.cwd()
+        print(f"🔧 Current directory for deps: {current_dir}")
+        self.deps_dir = current_dir / "deps"
         self.installed_packages = set()
         self._ensure_deps_dir()
+
+        # Debug info for exe environment
+        print(f"🔧 Lazy installer initialized - deps directory: {self.deps_dir}")
+        print(f"📂 Current working directory: {Path.cwd()}")
 
     def _ensure_deps_dir(self) -> None:
         """Ensure the deps directory exists."""
@@ -40,7 +52,23 @@ class LazyInstaller:
             importlib.import_module(package_name)
             return True
         except ImportError:
-            return False
+            # In PyInstaller exe, some modules might not be available for import checking
+            # even if they're installed at runtime. Check if they're in our deps directory.
+            module_path = self.deps_dir / package_name
+            if module_path.exists() or (module_path / "__init__.py").exists():
+                return True
+
+            # Also check if package files exist in deps (for packages without __init__.py)
+            package_in_deps = False
+            for file in self.deps_dir.rglob("*"):
+                if (
+                    package_name in file.name
+                    or package_name.replace("-", "_") in file.name
+                ):
+                    package_in_deps = True
+                    break
+
+            return package_in_deps
 
     def _run_command(self, cmd: List[str], cwd: Optional[str] = None) -> bool:
         """Run a command and return success status with real-time output."""
@@ -54,7 +82,11 @@ class LazyInstaller:
                 stderr=sys.stderr,
             )
             return result.returncode == 0
-        except (subprocess.SubprocessError, FileNotFoundError):
+        except (subprocess.SubprocessError, FileNotFoundError, OSError):
+            # In PyInstaller exe, some commands might not be available or might fail
+            print(
+                f"⚠️ Warning: Failed to run command '{' '.join(cmd)}' - may not be available in exe environment"
+            )
             return False
 
     def _has_uv(self) -> bool:
@@ -70,7 +102,7 @@ class LazyInstaller:
             cmd.extend(["--index-url", index_url])
 
         # Use target directory for caching
-        cmd.extend(["--target", str(self.deps_dir)])
+        # cmd.extend(["--target", str(self.deps_dir)])
 
         print(f"⚠️ Using uv for installation: {' '.join(cmd)}")
 
@@ -80,7 +112,7 @@ class LazyInstaller:
         self, packages: List[str], index_url: Optional[str] = None
     ) -> bool:
         """Install packages using pip."""
-        cmd = ["python", "-m", "pip", "install", "--target", str(self.deps_dir)]
+        # cmd = ["python", "-m", "pip", "install", "--target", str(self.deps_dir)]
 
         if index_url:
             cmd.extend(["--index-url", index_url])
@@ -102,7 +134,7 @@ class LazyInstaller:
                 # Look for CUDA version in nvidia-smi output
                 for line in output.split("\n"):
                     if "CUDA Version:" in line:
-                        version = line.split("CUDA Version:")[1].strip()
+                        version = line.split("CUDA Version:")[1].strip()  # type: ignore
                         parts = version.split(".")
                         if len(parts) >= 2:
                             return f"cu{parts[0]}{parts[1]}"
@@ -140,6 +172,71 @@ class LazyInstaller:
         """Get the appropriate package variants for the detected environment."""
         variants = {}
 
+        # Default packages that work on any environment (from pyproject.toml)
+        variants.update(
+            {
+                # ML/Audio processing packages
+                "whisper": {
+                    "packages": ["openai-whisper>=20250625"],
+                    "index_url": None,
+                },
+                "coqui_tts": {
+                    "packages": ["coqui-tts>=0.27.1"],
+                    "index_url": None,
+                },
+                "f5_tts": {
+                    "packages": ["f5-tts>=1.1.9"],
+                    "index_url": None,
+                },
+                "pyannote_audio": {
+                    "packages": ["pyannote-audio>=3.3.2"],
+                    "index_url": None,
+                },
+                "transformers": {
+                    "packages": ["transformers>=4.56.0"],
+                    "index_url": None,
+                },
+                "vocos": {
+                    "packages": ["vocos>=0.1.0"],
+                    "index_url": None,
+                },
+                "silero_vad": {
+                    "packages": ["silero-vad>=6.0.0"],
+                    "index_url": None,
+                },
+                "huggingface_hub": {
+                    "packages": ["huggingface-hub[hf-xet]>=0.34.4"],
+                    "index_url": None,
+                },
+                "edge_tts": {
+                    "packages": ["edge-tts>=7.2.3"],
+                    "index_url": None,
+                },
+                # Utility packages for smaller binary size
+                "ffmpeg_python": {
+                    "packages": ["ffmpeg-python>=0.2.0"],
+                    "index_url": None,
+                },
+                "openai": {
+                    "packages": ["openai>=1.102.0"],
+                    "index_url": None,
+                },
+                "pydub": {
+                    "packages": ["pydub>=0.25.1"],
+                    "index_url": None,
+                },
+                "soundfile": {
+                    "packages": ["soundfile>=0.13.1"],
+                    "index_url": None,
+                },
+                "tqdm": {
+                    "packages": ["tqdm>=4.65.0"],
+                    "index_url": None,
+                },
+            }
+        )
+
+        # Environment-specific overrides
         if environment == "cpu":
             variants["torch"] = {
                 "packages": ["torch", "torchvision", "torchaudio"],
@@ -235,6 +332,39 @@ class LazyInstaller:
             "audio-separator", variants["audio_separator"]
         )
 
+    def _install_additional_package(self, package_name: str) -> bool:
+        """Install an additional package if not already installed."""
+        # Convert package names to module names for checking
+        module_name_map = {
+            "whisper": "whisper",
+            "coqui_tts": "TTS",
+            "f5_tts": "f5_tts",
+            "pyannote_audio": "pyannote",
+            "transformers": "transformers",
+            "vocos": "vocos",
+            "silero_vad": "silero_vad",
+            "huggingface_hub": "huggingface_hub",
+            "edge_tts": "edge_tts",
+            "ffmpeg_python": "ffmpeg",
+            "openai": "openai",
+            "pydub": "pydub",
+            "soundfile": "soundfile",
+            "tqdm": "tqdm",
+        }
+
+        module_name = module_name_map.get(package_name, package_name)
+        if self._is_package_installed(module_name):
+            return True
+
+        environment, cuda_version = self._detect_environment()
+        variants = self._get_package_variants(environment, cuda_version)
+
+        if package_name not in variants:
+            print(f"⚠️ No variant found for {package_name} in environment {environment}")
+            return False
+
+        return self._install_package_group(package_name, variants[package_name])
+
     def ensure_dependencies(self) -> bool:
         """Ensure all required heavy dependencies are installed."""
         print("🔍 Checking for required dependencies...")
@@ -254,10 +384,37 @@ class LazyInstaller:
         if not self.ensure_audio_separator():
             success = False
 
+        # Ensure additional packages
+        additional_packages = [
+            "whisper",
+            "coqui_tts",
+            "f5_tts",
+            "pyannote_audio",
+            "transformers",
+            "vocos",
+            "silero_vad",
+            "huggingface_hub",
+            "edge_tts",
+            "ffmpeg_python",
+            "openai",
+            "pydub",
+            "soundfile",
+            "tqdm",
+        ]
+        for package in additional_packages:
+            if not self._install_additional_package(package):
+                success = False
+
         if success:
             print("✅ All dependencies installed successfully")
         else:
             print("❌ Some dependencies failed to install")
+            print(
+                "⚠️ Warning: The application may not function correctly without all dependencies."
+            )
+            print(
+                "   This can happen in restricted environments where package installation is not allowed."
+            )
 
         return success
 
@@ -294,3 +451,10 @@ def clear_cache() -> None:
 # Auto-ensure dependencies when module is imported
 # if __name__ != "__main__":
 #     ensure_dependencies()
+
+def install_and_cleanup():
+    """Install dependencies and clean up cache after pipeline completion."""
+    installer = get_installer()
+    installer.ensure_dependencies()
+    # Cache cleanup would be called after pipeline completion
+    # e.g., in main.py after all stages

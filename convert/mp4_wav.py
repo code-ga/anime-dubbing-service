@@ -34,9 +34,9 @@ def convert_mp4_to_wav(
             stream,
             output_file,
             vn=True,  # No video
-            acodec="pcm_s16le",  # Audio codec to PCM signed 16-bit little endian
-            ar=22050,  # Audio sampling rate to 22050 Hz
-            ac=1,  # Audio channels to mono
+            # acodec="pcm_s16le",  # Audio codec to PCM signed 16-bit little endian
+            # ar=22050,  # Audio sampling rate to 22050 Hz
+            # ac=1,  # Audio channels to mono
             format="wav",  # Explicitly specify the output format as WAV
         )
 
@@ -63,6 +63,7 @@ def convert_mp4_to_wav(
         return stage_data
     except ffmpeg.Error as e:
         error_message = e.stderr.decode("utf-8") if e.stderr else str(e)
+        print(f"Error during conversion: {error_message}")
         raise RuntimeError(f"Error during conversion: {error_message}")
     except Exception as e:
         raise RuntimeError(f"An error occurred: {str(e)}")
